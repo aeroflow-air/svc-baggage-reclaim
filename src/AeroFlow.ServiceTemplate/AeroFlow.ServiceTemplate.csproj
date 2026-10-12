@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>AeroFlow.ServiceTemplate</RootNamespace>
+    <AssemblyName>AeroFlow.ServiceTemplate</AssemblyName>
+  </PropertyGroup>
+
+</Project>

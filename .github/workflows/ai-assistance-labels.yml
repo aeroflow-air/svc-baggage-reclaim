@@ -1,0 +1,25 @@
+name: AI assistance labels
+
+# Golden-path caller for ADR-0012 / label-ai-assistance reusable workflow.
+# Zero-cost: Copilot cloud-agent author + manual/body/trailer/co-author signals.
+# No Cursor or other paid API secrets.
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, ready_for_review, reopened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  label:
+    if: github.event_name == 'pull_request' || github.event.issue.pull_request
+    uses: aeroflow-air/aeroflow-workflows/.github/workflows/label-ai-assistance.yml@main
+    with:
+      workflows_ref: main
+    permissions:
+      contents: read
+      pull-requests: write

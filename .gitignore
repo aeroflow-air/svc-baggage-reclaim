@@ -1,0 +1,46 @@
+## .NET / Visual Studio
+bin/
+obj/
+[Bb]uild/
+[Ll]og/
+[Ll]ogs/
+*.user
+*.userosscache
+*.suo
+*.userprefs
+*.vspscc
+*.vssscc
+.vs/
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+*.dbmdl
+*.jfm
+*.pfx
+*.publishsettings
+orleans.codegen.cs
+
+## OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+*.swp
+*~
+
+## Test / coverage
+TestResults/
+coverage*
+*.coverage
+*.coveragexml
+
+## Secrets / local
+appsettings.*.local.json
+*.env
+.env*
+!.env.example
+
+## Docker
+**/.dockerignore.bak

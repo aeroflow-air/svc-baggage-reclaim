@@ -1,0 +1,24 @@
+# Thin caller — real work lives in aeroflow-workflows.
+# Pin a release tag, never @main.
+#
+# Org GITHUB_TOKEN is read-only by default; keep job-level permissions
+# explicit and minimal on both the caller and the reusable workflow.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    uses: aeroflow-air/aeroflow-workflows/.github/workflows/dotnet-ci.yml@v0.1.0
+    with:
+      solution: AeroFlow.ServiceTemplate.sln
+    permissions:
+      contents: read
