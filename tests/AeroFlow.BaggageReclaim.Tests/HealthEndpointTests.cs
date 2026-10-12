@@ -1,15 +1,20 @@
 using System.Net;
+using AeroFlow.BaggageReclaim.Messaging;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Xunit;
 
-namespace AeroFlow.ServiceTemplate.Tests;
+namespace AeroFlow.BaggageReclaim.Tests;
 
 public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
 {
+    private readonly WebApplicationFactory<Program> _factory;
     private readonly HttpClient _client;
 
     public HealthEndpointTests(WebApplicationFactory<Program> factory)
     {
+        _factory = factory;
         _client = factory.CreateClient();
     }
 
@@ -24,19 +29,10 @@ public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Pr
     }
 
     [Fact]
-    public async Task Bookings_ping_returns_ok()
+    public void Flight_events_listener_is_not_started_without_messaging_connection()
     {
-        var response = await _client.GetAsync("/api/bookings/ping");
+        var hosted = _factory.Services.GetServices<IHostedService>();
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task Bookings_unknown_id_returns_problem_details()
-    {
-        var response = await _client.GetAsync("/api/bookings/does-not-exist");
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
-        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        Assert.DoesNotContain(hosted, h => h is FlightEventsProcessor);
     }
 }

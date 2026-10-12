@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "AeroFlow.ServiceTemplate": {
+    "AeroFlow.BaggageReclaim": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,

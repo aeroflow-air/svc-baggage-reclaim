@@ -4,16 +4,16 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 COPY Directory.Build.props ./
-COPY AeroFlow.ServiceTemplate.sln ./
-COPY src/AeroFlow.ServiceTemplate/AeroFlow.ServiceTemplate.csproj src/AeroFlow.ServiceTemplate/
-COPY tests/AeroFlow.ServiceTemplate.Tests/AeroFlow.ServiceTemplate.Tests.csproj tests/AeroFlow.ServiceTemplate.Tests/
+COPY AeroFlow.BaggageReclaim.sln ./
+COPY src/AeroFlow.BaggageReclaim/AeroFlow.BaggageReclaim.csproj src/AeroFlow.BaggageReclaim/
+COPY tests/AeroFlow.BaggageReclaim.Tests/AeroFlow.BaggageReclaim.Tests.csproj tests/AeroFlow.BaggageReclaim.Tests/
 
-RUN dotnet restore AeroFlow.ServiceTemplate.sln
+RUN dotnet restore AeroFlow.BaggageReclaim.sln
 
 COPY src/ src/
 COPY tests/ tests/
 
-RUN dotnet publish src/AeroFlow.ServiceTemplate/AeroFlow.ServiceTemplate.csproj \
+RUN dotnet publish src/AeroFlow.BaggageReclaim/AeroFlow.BaggageReclaim.csproj \
     -c Release \
     -o /app/publish \
     --no-restore
@@ -30,4 +30,4 @@ USER appuser
 COPY --from=build /app/publish .
 
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "AeroFlow.ServiceTemplate.dll"]
+ENTRYPOINT ["dotnet", "AeroFlow.BaggageReclaim.dll"]

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>AeroFlow.BaggageReclaim</RootNamespace>
+    <AssemblyName>AeroFlow.BaggageReclaim</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="9.5.2" />
+  </ItemGroup>
+
+</Project>

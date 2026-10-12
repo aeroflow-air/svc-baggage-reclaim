@@ -1,68 +1,53 @@
-# AeroFlow .NET service template
+# svc-baggage-reclaim
 
-Golden-path ASP.NET Core Web API template for the [AeroFlow Air](https://github.com/aeroflow-air) portfolio. Squads of roughly six use this to spin up `svc-*` repositories with a thin, containerised starting point — health checks, structured logging, ProblemDetails, and a stub for OpenTelemetry — without a shared framework package.
-
-## Create a new service from this template
-
-**Preferred:** on GitHub, open this repository and choose **Use this template** → create `svc-booking` (or similar) under `aeroflow-air`.
-
-**Or clone and rename:**
-
-```bash
-git clone https://github.com/aeroflow-air/template-dotnet-service.git svc-booking
-cd svc-booking
-# Rename solution, project folders, namespaces, and Docker image tags to match the service
-```
-
-Keep the layout: `src/`, `tests/`, `Dockerfile`, and `.github/workflows/ci.yml`. Rename `AeroFlow.ServiceTemplate` to your service name throughout.
+AeroFlow Air **Baggage Reclaim** service: assigns each arriving flight to a reclaim belt, tracks its bags (unloaded, on belt, collected, delayed, missing) and closes the reclaim when the belt is clear. Planned in [platform-handbook#44](https://github.com/aeroflow-air/platform-handbook/issues/44); created from [template-dotnet-service](https://github.com/aeroflow-air/template-dotnet-service).
 
 ## Local run
 
-Requires [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
+Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0).
 
 ```bash
-dotnet restore
-dotnet run --project src/AeroFlow.ServiceTemplate
-```
-
-- API: `http://localhost:8080` (or the port shown in the console)
-- Health: `GET /health`
-- Demo booking probe: `GET /api/bookings/ping` and `GET /api/bookings/{id}` (unknown ids return ProblemDetails)
-
-```bash
+dotnet run --project src/AeroFlow.BaggageReclaim
 dotnet test
 ```
+
+- Health: `GET /health`
+- The belts, reclaim and bag API arrives with platform-handbook#69.
+
+To run it with the whole airport, use the Aspire AppHost in [`aeroflow-local`](https://github.com/aeroflow-air/aeroflow-local) (clone this repo next to it).
+
+## Domain
+
+Pure, immutable and I/O-free (ADR-0004), in [`src/AeroFlow.BaggageReclaim/Domain`](src/AeroFlow.BaggageReclaim/Domain):
+
+- `ReclaimHall`: the belts (each with a capacity in flights), every flight's `FlightReclaim`, and the ids of flight events already applied.
+- `ReclaimPlanner.Apply(hall, command)` returns `Result<ReclaimHall>`. Commands: `AssignBelt` (least busy belt with room, ties to the first listed), `RecordDelay`, `CancelReclaim`, `MoveBag`, `CompleteReclaim` (uncollected bags become `Missing`).
+- Bag moves: `Unloaded → OnBelt | Delayed | Missing`, `OnBelt → Collected | Missing`, `Delayed → OnBelt | Missing`.
+- Errors are typed (`ValidationError` 400, `NotFoundError` 404, `RuleViolation` 409), e.g. `no_belt_available`, `already_assigned`, `reclaim_closed`.
+- Flight numbers are a two-character airline code plus 1-4 digits (`BA123`, `U2123`), matching the simulator (aeroflow-local#6). Bag tags are the airline code plus six digits (`BA000123`).
+
+## Flight events
+
+Inside the AppHost the service listens to the flight simulator on the Service Bus topic `flight-events`, subscription `svc-baggage-reclaim`. The processor ([`Messaging/FlightEventsProcessor.cs`](src/AeroFlow.BaggageReclaim/Messaging/FlightEventsProcessor.cs)) uses the Aspire client (`AddAzureServiceBusClient("messaging")`) and only starts when a `messaging` connection string is configured, so `dotnet run`, the container and the tests run without Service Bus.
+
+[`ReclaimEventHandler`](src/AeroFlow.BaggageReclaim/Messaging/ReclaimEventHandler.cs) handles flights **arriving** at the home airport (`FlightEvents:HomeAirport`, default `LHR`):
+
+| Event | Effect |
+|---|---|
+| `Landed` | `AssignBelt` with a stable bag count per flight (60-180) |
+| `Delayed` | `RecordDelay` if the flight already has a belt, otherwise ignored |
+| `Cancelled` | `CancelReclaim` (frees the belt slot) if it has a belt, otherwise ignored |
+| others | ignored |
+
+**Idempotent:** the event id is stored in the hall in the same atomic update as the change (last 10,000 kept), so a redelivered message is ignored. Business rejections are logged as warnings and completed; an unreadable body is dead-lettered.
+
+Settings (`FlightEvents` section): `Topic`, `Subscription`, `HomeAirport`, `MinBagsPerFlight`, `MaxBagsPerFlight`. The event contract is a local copy of `AeroFlow.Local.FlightEvents.FlightEvent`.
+
+Publishing `baggage-events` (platform-handbook#68) and the API (#69) come next.
 
 ## Container
 
 ```bash
-docker build -t aeroflow-service-template .
-docker run --rm -p 8080:8080 aeroflow-service-template
+docker build -t svc-baggage-reclaim .
+docker run --rm -p 8080:8080 svc-baggage-reclaim
 ```
-
-Then `curl http://localhost:8080/health`.
-
-## What is deliberately not included
-
-- **No Kubernetes** manifests or Helm charts
-- **No Dagger** pipelines
-- **No Pulumi** (or other IaC frameworks in-repo yet)
-- **No heavy shared framework** NuGet — composition stays in `Program.cs` so squads can delete or replace pieces freely
-
-Infrastructure as Bicep will land under [`infra/`](infra/README.md) later, using only governed platform modules (`br/platform:*`); see [ADR-0006](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0006-governed-bicep-modules-only.md). Platform conventions live in the **platform-handbook**; reusable Actions come from **aeroflow-workflows**.
-
-## CI
-
-`.github/workflows/ci.yml` calls the reusable workflow in `aeroflow-workflows` (`dotnet-ci.yml`, pinned to `@v0.1.0`), which restores, builds, and tests on pushes to `main` and on pull requests. Job-level `permissions` are explicit because the organisation `GITHUB_TOKEN` is read-only by default.
-
-## Pointers
-
-| Resource | Purpose |
-| --- | --- |
-| platform-handbook | Portfolio standards, CLAUDE.md constraints, ADR process |
-| aeroflow-workflows | Shared GitHub Actions (dotnet-ci and decisions validation) |
-| `infra/` | Placeholder for Bicep (governed `br/platform:*` modules only, see [ADR-0006](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0006-governed-bicep-modules-only.md)) — see `infra/README.md` |
-
-## Licence / ownership
-
-Internal AeroFlow Air template. Public repository; treat as the default starting point for new .NET services unless an ADR says otherwise.

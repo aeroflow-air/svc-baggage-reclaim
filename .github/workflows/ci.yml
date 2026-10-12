@@ -19,6 +19,6 @@ jobs:
   build-and-test:
     uses: aeroflow-air/aeroflow-workflows/.github/workflows/dotnet-ci.yml@v0.1.0
     with:
-      solution: AeroFlow.ServiceTemplate.sln
+      solution: AeroFlow.BaggageReclaim.sln
     permissions:
       contents: read
