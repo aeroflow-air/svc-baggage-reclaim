@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AeroFlow.BaggageReclaim.Domain;
 using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Options;
 
@@ -12,6 +13,7 @@ namespace AeroFlow.BaggageReclaim.Messaging;
 public sealed partial class FlightEventsProcessor(
     ServiceBusClient client,
     ReclaimEventHandler handler,
+    IBaggageEventPublisher publisher,
     IOptions<FlightEventsOptions> options,
     ILogger<FlightEventsProcessor> logger) : IHostedService, IAsyncDisposable
 {
@@ -73,6 +75,11 @@ public sealed partial class FlightEventsProcessor(
         {
             case HandleOutcome.Applied a:
                 LogApplied(a.Command, evt.FlightNumber, evt.EventType);
+                if (handler.BeltAssignedFor(evt) is Option<BaggageEvent>.Some assigned)
+                {
+                    await publisher.PublishAsync([assigned.Value], args.CancellationToken);
+                }
+
                 break;
             case HandleOutcome.Rejected r:
                 LogRejected(evt.EventType, evt.FlightNumber, r.Error.Code, r.Error.Message);

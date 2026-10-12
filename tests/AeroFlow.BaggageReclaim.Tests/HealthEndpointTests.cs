@@ -35,4 +35,11 @@ public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Pr
 
         Assert.DoesNotContain(hosted, h => h is FlightEventsProcessor);
     }
+
+    [Fact]
+    public void Without_messaging_events_go_nowhere_but_unloading_still_runs()
+    {
+        Assert.IsType<NoOpBaggageEventPublisher>(_factory.Services.GetRequiredService<IBaggageEventPublisher>());
+        Assert.Contains(_factory.Services.GetServices<IHostedService>(), h => h is UnloadingWorker);
+    }
 }

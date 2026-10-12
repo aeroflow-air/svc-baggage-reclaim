@@ -28,7 +28,7 @@ Pure, immutable and I/O-free (ADR-0004), in [`src/AeroFlow.BaggageReclaim/Domain
 
 ## Flight events
 
-Inside the AppHost the service listens to the flight simulator on the Service Bus topic `flight-events`, subscription `svc-baggage-reclaim`. The processor ([`Messaging/FlightEventsProcessor.cs`](src/AeroFlow.BaggageReclaim/Messaging/FlightEventsProcessor.cs)) uses the Aspire client (`AddAzureServiceBusClient("messaging")`) and only starts when a `messaging` connection string is configured, so `dotnet run`, the container and the tests run without Service Bus.
+Inside the AppHost the service listens to the flight simulator on the Service Bus topic `flight-events`, subscription `baggage-reclaim`. The processor ([`Messaging/FlightEventsProcessor.cs`](src/AeroFlow.BaggageReclaim/Messaging/FlightEventsProcessor.cs)) uses the Aspire client (`AddAzureServiceBusClient("messaging")`) and only starts when a `messaging` connection string is configured, so `dotnet run`, the container and the tests run without Service Bus.
 
 [`ReclaimEventHandler`](src/AeroFlow.BaggageReclaim/Messaging/ReclaimEventHandler.cs) handles flights **arriving** at the home airport (`FlightEvents:HomeAirport`, default `LHR`):
 
@@ -43,7 +43,23 @@ Inside the AppHost the service listens to the flight simulator on the Service Bu
 
 Settings (`FlightEvents` section): `Topic`, `Subscription`, `HomeAirport`, `MinBagsPerFlight`, `MaxBagsPerFlight`. The event contract is a local copy of `AeroFlow.Local.FlightEvents.FlightEvent`.
 
-Publishing `baggage-events` (platform-handbook#68) and the API (#69) come next.
+## Baggage events (published)
+
+After `Landed`, an [`UnloadingWorker`](src/AeroFlow.BaggageReclaim/Messaging/UnloadingWorker.cs) ticks the pure [`UnloadingSimulator`](src/AeroFlow.BaggageReclaim/Domain/UnloadingSimulator.cs): once the first-bag time has passed (plus any recorded delay), bags move from the hold to the belt, passengers collect them, and the reclaim closes when the belt is empty. Each step is published to the Service Bus topic **`baggage-events`**. The JSON body is a [`BaggageEvent`](src/AeroFlow.BaggageReclaim/Domain/BaggageEvent.cs), `Subject` is the event type, `CorrelationId` the flight id and `MessageId` the event id.
+
+| Event | When | Extra fields |
+|---|---|---|
+| `BeltAssigned` | the `Landed` event is applied (event id = the flight event's id) | |
+| `BagsOnBelt` | first bag reaches the belt | `bagCount` |
+| `BagDelayed` | a bag didn't make it (`DelayedBagProbability`) | `bagTag`, `reason` |
+| `LastBagOnBelt` | nothing left in the hold | |
+| `ReclaimComplete` | belt empty; uncollected or delayed bags become missing | `bagCount`, `bagsCollected`, `bagsMissing` |
+
+Events are only published when the `messaging` connection exists. Without it the simulation still runs in memory and nothing leaves the process.
+
+Settings (`Baggage` section, e.g. `Baggage__TickSeconds=1`): `Topic` (`baggage-events`), `SimulateUnloading` (true), `TickSeconds` (2), `FirstBagAfterLandingSeconds` (10), `BagsPerTick` (12), `CollectedPerTick` (10), `DelayedBagProbability` (0.01) and `Seed` (random). With the defaults, a 120-bag flight goes from landing to `ReclaimComplete` in about 35 seconds.
+
+The API (#69) comes next.
 
 ## Container
 

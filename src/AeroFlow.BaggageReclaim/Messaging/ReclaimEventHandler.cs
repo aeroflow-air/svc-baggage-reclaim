@@ -77,6 +77,17 @@ public sealed class ReclaimEventHandler(IReclaimHallStore store, IOptions<Flight
                 error => new HandleOutcome.Rejected(error));
     }
 
+    /// <summary>
+    /// The <c>BeltAssigned</c> event for a <c>Landed</c> event that was applied, or <c>None</c>. Its id is the flight
+    /// event's id so a retry after a failed send publishes the same message id (Service Bus can de-duplicate).
+    /// </summary>
+    public Option<BaggageEvent> BeltAssignedFor(FlightEventMessage evt) =>
+        evt.EventType != FlightEventType.Landed
+            ? Option.None<BaggageEvent>()
+            : FlightId.Parse(evt.FlightId).Match(
+                id => store.Current().ReclaimFor(id).Map(r => BaggageEvent.For(r, BaggageEventType.BeltAssigned, evt.OccurredAt, evt.EventId)),
+                _ => Option.None<BaggageEvent>());
+
     /// <summary>Stable per flight (FNV-1a, not string.GetHashCode, which changes per process).</summary>
     private int BagCount(FlightId flight)
     {

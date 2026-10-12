@@ -20,10 +20,25 @@ builder.Services.AddSingleton<IReclaimHallStore>(_ => new InMemoryReclaimHallSto
 // `dotnet run`, the container and the tests still start without Service Bus.
 builder.Services.Configure<FlightEventsOptions>(builder.Configuration.GetSection(FlightEventsOptions.SectionName));
 builder.Services.AddSingleton<ReclaimEventHandler>();
+
+// Baggage events (platform-handbook#68): simulated unloading runs either way; events only leave the process
+// (to the baggage-events topic) when the same "messaging" connection exists.
+builder.Services.Configure<BaggageOptions>(builder.Configuration.GetSection(BaggageOptions.SectionName));
+builder.Services.AddSingleton(TimeProvider.System);
 if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString(FlightEventsOptions.ConnectionName)))
 {
     builder.AddAzureServiceBusClient(FlightEventsOptions.ConnectionName);
+    builder.Services.AddSingleton<IBaggageEventPublisher, ServiceBusBaggageEventPublisher>();
     builder.Services.AddHostedService<FlightEventsProcessor>();
+}
+else
+{
+    builder.Services.AddSingleton<IBaggageEventPublisher, NoOpBaggageEventPublisher>();
+}
+
+if (builder.Configuration.GetValue(BaggageOptions.SectionName + ":" + nameof(BaggageOptions.SimulateUnloading), true))
+{
+    builder.Services.AddHostedService<UnloadingWorker>();
 }
 
 // ---------------------------------------------------------------------------
