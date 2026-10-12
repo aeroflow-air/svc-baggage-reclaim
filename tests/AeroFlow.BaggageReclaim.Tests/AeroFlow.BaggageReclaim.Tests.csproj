@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <IsPackable>false</IsPackable>
-    <RootNamespace>AeroFlow.ServiceTemplate.Tests</RootNamespace>
+    <RootNamespace>AeroFlow.BaggageReclaim.Tests</RootNamespace>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,7 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\AeroFlow.ServiceTemplate\AeroFlow.ServiceTemplate.csproj" />
+    <ProjectReference Include="..\..\src\AeroFlow.BaggageReclaim\AeroFlow.BaggageReclaim.csproj" />
   </ItemGroup>
 
 </Project>
