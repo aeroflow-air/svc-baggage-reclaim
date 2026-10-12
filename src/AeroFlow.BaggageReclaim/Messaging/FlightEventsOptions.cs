@@ -11,7 +11,7 @@ public sealed class FlightEventsOptions
     public string Topic { get; set; } = "flight-events";
 
     /// <summary>The aeroflow-local AppHost creates this subscription and also sets it via <c>FlightEvents__Subscription</c>.</summary>
-    public string Subscription { get; set; } = "svc-baggage-reclaim";
+    public string Subscription { get; set; } = "baggage-reclaim";
 
     /// <summary>The airport whose reclaim hall this is. Matches the simulator's home airport.</summary>
     public string HomeAirport { get; set; } = "LHR";
