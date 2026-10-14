@@ -8,7 +8,7 @@
 | Owner | AeroFlow platform (Tony Joanes) |
 | Status | prototype, local only |
 | Runs in | aeroflow-local AppHost resource `svc-baggage-reclaim`; Container Apps later (ADR-0007) |
-| Last reviewed | 2026-10-12 |
+| Last reviewed | 2026-10-14 |
 
 Written to the [service docs standard](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/standards/service-docs.md). The airport-wide picture is in the [airport overview](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/architecture/airport-overview.md). Plan: [platform-handbook#44](https://github.com/aeroflow-air/platform-handbook/issues/44).
 
@@ -16,7 +16,7 @@ Written to the [service docs standard](https://github.com/aeroflow-air/platform-
 
 Owns the **reclaim hall**: the belts, each arriving flight's reclaim (belt, bags and their state) and the `baggage-events` topic. It simulates unloading after landing and publishes each step.
 
-It does **not** handle departing bags, does not know real passenger numbers, and has no query API yet (#69).
+It does **not** handle departing bags, does not know real passenger numbers, and only has a read-only belts list so far; the rest of the query API is [platform-handbook#69](https://github.com/aeroflow-air/platform-handbook/issues/69).
 
 ## Design decisions
 
@@ -52,8 +52,9 @@ flowchart LR
 | Method | Route | Purpose | Responses |
 | --- | --- | --- | --- |
 | GET | `/health` | liveness | 200 |
+| GET | `/belts` | every belt with its open and completed reclaims (stage `Assigned`, `OnBelt`, `LastBag`, `Complete`, bag counts); cancelled reclaims are left out. Read by the ops dashboard on startup ([platform-handbook#74](https://github.com/aeroflow-air/platform-handbook/issues/74)) | 200 |
 
-The belts, reclaim and bag API is [platform-handbook#69](https://github.com/aeroflow-air/platform-handbook/issues/69).
+The rest of the belts, reclaim and bag API (one belt, a flight's reclaim, bags, completing a reclaim) is [platform-handbook#69](https://github.com/aeroflow-air/platform-handbook/issues/69).
 
 ### Events consumed
 

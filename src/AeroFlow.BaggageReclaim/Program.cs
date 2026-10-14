@@ -12,7 +12,7 @@ builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
 
-// One in-memory reclaim hall shared by the event listener and (later, #69) the API.
+// One in-memory reclaim hall shared by the event listener and the read API (GET /belts; rest of the API is #69).
 builder.Services.AddSingleton<IReclaimHallStore>(_ => new InMemoryReclaimHallStore(DefaultReclaimHall.Create()));
 
 // Flight events (platform-handbook#67): react to the simulator on the flight-events topic. Only wired when a
