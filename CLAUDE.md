@@ -21,8 +21,9 @@ The checklist is [C# coding standards](https://github.com/aeroflow-air/platform-
 
 ## Where things live
 
-- `src/AeroFlow.BaggageReclaim/Domain`: pure core. `ReclaimPlanner` (pure rules, no I/O, no clock) and `UnloadingSimulator` (one tick in, new hall and events out); `Reclaim`, `ReclaimCommand`, `BaggageEvent`, `Identifiers`, `Errors.cs`, `Result`, `Option`.
+- `src/AeroFlow.BaggageReclaim/Domain`: pure core. `ReclaimPlanner` (pure rules, no I/O, no clock) and `UnloadingSimulator` (one tick in, new hall and events out), `ReclaimQueries` (pure read projections); `Reclaim`, `ReclaimCommand`, `BaggageEvent`, `Identifiers`, `Errors.cs`, `Result`, `Option`.
 - `Messaging/`: `FlightEventsProcessor` → `ReclaimEventHandler`; `UnloadingWorker` drives ticks with `TimeProvider`; `ServiceBusBaggageEventPublisher`.
+- `Controllers/` + `Models/`: read-only HTTP edge (`GET /belts` via `ReclaimQueries`); the rest of the API is platform-handbook#69.
 - `Storage/`: `IReclaimHallStore`, in-memory implementation.
 
 ## Events
