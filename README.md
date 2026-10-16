@@ -12,7 +12,8 @@ dotnet test
 ```
 
 - Health: `GET /health`
-- The belts, reclaim and bag API arrives with platform-handbook#69.
+- Read API (platform-handbook#69): `GET /belts`, `GET /belts/{id}`, `GET /flights/{flightId}/reclaim`, `GET /bags/{bagTag}`. Errors are ProblemDetails with a `code` (400 malformed id, 404 not found).
+- API docs (Development, or `ApiDocs__Enabled=true`): Scalar at `/scalar`, OpenAPI at `/openapi/v1.json`.
 
 To run it with the whole airport, use the Aspire AppHost in [`aeroflow-local`](https://github.com/aeroflow-air/aeroflow-local) (clone this repo next to it).
 
@@ -58,8 +59,6 @@ After `Landed`, an [`UnloadingWorker`](src/AeroFlow.BaggageReclaim/Messaging/Unl
 Events are only published when the `messaging` connection exists. Without it the simulation still runs in memory and nothing leaves the process.
 
 Settings (`Baggage` section, e.g. `Baggage__TickSeconds=1`): `Topic` (`baggage-events`), `SimulateUnloading` (true), `TickSeconds` (2), `FirstBagAfterLandingSeconds` (10), `BagsPerTick` (12), `CollectedPerTick` (10), `DelayedBagProbability` (0.01) and `Seed` (random). With the defaults, a 120-bag flight goes from landing to `ReclaimComplete` in about 35 seconds.
-
-The API (#69) comes next.
 
 ## Container
 

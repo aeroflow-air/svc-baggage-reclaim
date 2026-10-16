@@ -8,7 +8,7 @@
 | Owner | AeroFlow platform (Tony Joanes) |
 | Status | prototype, local only |
 | Runs in | aeroflow-local AppHost resource `svc-baggage-reclaim`; Container Apps later (ADR-0007) |
-| Last reviewed | 2026-10-14 |
+| Last reviewed | 2026-10-16 |
 
 Written to the [service docs standard](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/standards/service-docs.md). The airport-wide picture is in the [airport overview](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/architecture/airport-overview.md). Plan: [platform-handbook#44](https://github.com/aeroflow-air/platform-handbook/issues/44).
 
@@ -16,7 +16,7 @@ Written to the [service docs standard](https://github.com/aeroflow-air/platform-
 
 Owns the **reclaim hall**: the belts, each arriving flight's reclaim (belt, bags and their state) and the `baggage-events` topic. It simulates unloading after landing and publishes each step.
 
-It does **not** handle departing bags, does not know real passenger numbers, and only has a read-only belts list so far; the rest of the query API is [platform-handbook#69](https://github.com/aeroflow-air/platform-handbook/issues/69).
+It does **not** handle departing bags, does not know real passenger numbers, and its HTTP API is read-only ([platform-handbook#69](https://github.com/aeroflow-air/platform-handbook/issues/69)); completing a reclaim over HTTP waits for Keycloak.
 
 ## Design decisions
 
@@ -52,8 +52,12 @@ flowchart LR
 | --- | --- | --- | --- |
 | GET | `/health` | liveness | 200 |
 | GET | `/belts` | every belt with its open and completed reclaims (stage `Assigned`, `OnBelt`, `LastBag`, `Complete`, bag counts); cancelled reclaims are left out. Read by the ops dashboard on startup ([platform-handbook#74](https://github.com/aeroflow-air/platform-handbook/issues/74)) | 200 |
+| GET | `/belts/{id}` | one belt, same shape as an item of `/belts` | 200, 400 `invalid_belt`, 404 `belt_not_found` |
+| GET | `/flights/{flightId}/reclaim` | a flight's reclaim in any status (`Unloading`, `Complete`, `Cancelled` with reason), stage, delay and every bag with its status | 200, 400 `invalid_flight_id`, 404 `reclaim_not_found` |
+| GET | `/bags/{bagTag}` | one bag (case-insensitive tag) with its status, flight, belt and reclaim status; if a wrapped tag appears twice, the latest landing wins | 200, 400 `invalid_bag_tag`, 404 `bag_not_found` |
+| GET | `/scalar`, `/openapi/v1.json` | API docs, only when `ApiDocs:Enabled` (true in Development) | 200 |
 
-The rest of the belts, reclaim and bag API (one belt, a flight's reclaim, bags, completing a reclaim) is [platform-handbook#69](https://github.com/aeroflow-air/platform-handbook/issues/69).
+Errors are RFC 7807 ProblemDetails (`application/problem+json`) with `code` set to the domain error code and `instance` to the path. The API is read-only: `POST /flights/{flightId}/reclaim/complete` from [platform-handbook#69](https://github.com/aeroflow-air/platform-handbook/issues/69) needs a Keycloak role and waits for auth to exist.
 
 ### Events consumed
 
@@ -70,6 +74,7 @@ Contract: `Messaging/FlightEventMessage.cs`, a **local copy** of `AeroFlow.Local
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
+| `ApiDocs:Enabled` | `false` (`true` in Development) | serve OpenAPI and Scalar |
 | `Outbox:RetrySeconds` | `5` | how often unsent baggage events are retried when nothing else wakes the dispatcher |
 | `ConnectionStrings:messaging` | unset | when unset: no processor, no-op publisher |
 | `FlightEvents:Topic` / `Subscription` | `flight-events` / `baggage-reclaim` | |
@@ -131,11 +136,11 @@ In-memory hall; logs `Published {EventType} for {FlightNumber} on belt {Belt}`.
 
 - Standalone: `dotnet run --project src/AeroFlow.BaggageReclaim`, then `curl http://localhost:8080/health`. Nothing else happens without the bus.
 - With the airport: clone next to `aeroflow-local` (the AppHost will not build otherwise) and run its AppHost. Healthy logs after an LHR landing: `AssignBelt for U21234 after Landed`, `Published BeltAssigned ...`, then `BagsOnBelt`, `LastBagOnBelt`, `ReclaimComplete` over ~30 s. Use `Baggage__TickSeconds=1` to speed up.
-- Tests: `dotnet test` covers the planner, unloading simulator, event handler (including idempotency), deterministic ids, the outbox (failed publish, retry, ordering), publishing and health.
+- Tests: `dotnet test` covers the planner, unloading simulator, event handler (including idempotency), deterministic ids, the outbox (failed publish, retry, ordering), publishing, the read API (including ProblemDetails errors and the OpenAPI document) and health.
 
 ## Known gaps
 
-- No query API ([#69](https://github.com/aeroflow-air/platform-handbook/issues/69)); no reader for `baggage-events` ([#53](https://github.com/aeroflow-air/platform-handbook/issues/53)).
+- No HTTP way to complete a reclaim (needs Keycloak, [#69](https://github.com/aeroflow-air/platform-handbook/issues/69)); no reader for `baggage-events` ([#53](https://github.com/aeroflow-air/platform-handbook/issues/53)).
 - Event contracts are local copies, and `BaggageEvent` lives only here ([#71](https://github.com/aeroflow-air/platform-handbook/issues/71)).
 - `workload.yaml` cannot declare the subscription or the topic ([#64](https://github.com/aeroflow-air/platform-handbook/issues/64)).
 - In-memory state (hall and outbox); no authentication.

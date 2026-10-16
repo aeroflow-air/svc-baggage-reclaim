@@ -49,6 +49,9 @@ public sealed record ReclaimNotFound(FlightId Flight)
 public sealed record BagNotFound(BagTag Bag)
     : NotFoundError("bag_not_found", $"No bag exists with tag '{Bag}'.");
 
+public sealed record BeltNotFound(BeltId Belt)
+    : NotFoundError("belt_not_found", $"No belt exists with id '{Belt}'.");
+
 // --- Rule violations ------------------------------------------------------------
 
 public sealed record AlreadyAssigned(FlightId Flight, BeltId Belt)
