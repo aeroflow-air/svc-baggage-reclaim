@@ -15,15 +15,15 @@ public sealed class InMemoryReclaimHallStore(ReclaimHall seed) : IReclaimHallSto
     public ReclaimHall Current() => Volatile.Read(ref _state).Hall;
 
     public Result<ReclaimHall> Update(Func<ReclaimHall, Result<ReclaimHall>> transition) =>
-        UpdateWithEvents(hall => transition(hall).Map(next => new UnloadingStep(next, []))).Map(step => step.Hall);
+        UpdateWithEvents(hall => transition(hall).Map(next => new HallChange(next, []))).Map(step => step.Hall);
 
-    public Result<UnloadingStep> UpdateWithEvents(Func<ReclaimHall, Result<UnloadingStep>> transition)
+    public Result<HallChange> UpdateWithEvents(Func<ReclaimHall, Result<HallChange>> transition)
     {
         while (true)
         {
             var snapshot = Volatile.Read(ref _state);
             var outcome = transition(snapshot.Hall);
-            if (outcome is not Result<UnloadingStep>.Ok ok)
+            if (outcome is not Result<HallChange>.Ok ok)
             {
                 return outcome;
             }

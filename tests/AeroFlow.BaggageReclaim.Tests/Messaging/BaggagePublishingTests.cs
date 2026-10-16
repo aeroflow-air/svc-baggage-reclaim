@@ -114,6 +114,36 @@ public sealed class BaggagePublishingTests
     }
 
     [Fact]
+    public async Task Running_dispatcher_survives_a_publisher_timeout_and_retries_after_the_interval()
+    {
+        Handler().Handle(Landed());
+        _publisher.ThrowCancelled = true;
+        var dispatcher = new OutboxDispatcher(_store, _publisher, Options.Create(new OutboxOptions { RetrySeconds = 5 }), _clock, NullLogger<OutboxDispatcher>.Instance);
+
+        await dispatcher.StartAsync(CancellationToken.None);
+        await WaitUntil(() => _publisher.Attempts == 1);
+        dispatcher.Notify(); // ignored during the back-off
+        await Task.Delay(50);
+        Assert.Equal(1, _publisher.Attempts);
+
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        await WaitUntil(() => _store.Pending().Count == 0);
+        Assert.Equal(BaggageEventType.BeltAssigned, Assert.Single(_publisher.Published).EventType);
+
+        await dispatcher.StopAsync(CancellationToken.None);
+    }
+
+    private static async Task WaitUntil(Func<bool> condition)
+    {
+        for (var i = 0; i < 200 && !condition(); i++)
+        {
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition());
+    }
+
+    [Fact]
     public void Service_bus_message_has_subject_and_correlation()
     {
         var evt = new BaggageEvent(Guid.NewGuid(), BaggageEventType.BagsOnBelt, "SIM-00001", "BA123", "3", Now, BagCount: 120);
@@ -151,10 +181,21 @@ public sealed class BaggagePublishingTests
     {
         public bool FailNext { get; set; }
 
+        public bool ThrowCancelled { get; set; }
+
+        public int Attempts { get; private set; }
+
         public List<BaggageEvent> Published { get; } = [];
 
         public Task PublishAsync(IReadOnlyCollection<BaggageEvent> events, CancellationToken cancellationToken)
         {
+            Attempts++;
+            if (ThrowCancelled)
+            {
+                ThrowCancelled = false;
+                throw new TaskCanceledException("send timed out");
+            }
+
             if (FailNext)
             {
                 FailNext = false;

@@ -17,7 +17,7 @@ public sealed class OutboxOptions
 /// Sends the baggage events waiting in the store's outbox, oldest first, and removes each one once it is sent
 /// (ADR-0017). A failed send leaves it and everything after it in the outbox, so order is kept and the next attempt
 /// retries from there. Delivery is at least once: a send that succeeded but reported failure is sent again with the
-/// same <c>MessageId</c>, which Service Bus duplicate detection and consumers drop.
+/// same <c>MessageId</c>; duplicate detection on the topic (set in the aeroflow-local AppHost) and consumers drop it.
 /// </summary>
 public sealed partial class OutboxDispatcher(
     IReclaimHallStore store,
@@ -58,9 +58,16 @@ public sealed partial class OutboxDispatcher(
             {
                 await DrainAsync(stoppingToken);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex) when (!stoppingToken.IsCancellationRequested)
             {
+                // Includes a publisher timeout (OperationCanceledException) that isn't a shutdown: never stop the host,
+                // or the in-memory outbox would be lost.
                 LogPublishFailed(ex, store.Pending().Count, retry.TotalSeconds);
+
+                // Back off for the full interval: wake-ups from new changes don't cut it short while the bus is down.
+                await Task.Delay(retry, clock, stoppingToken).ContinueWith(_ => { }, TaskScheduler.Default);
+                _wake.Reader.TryRead(out _);
+                continue;
             }
 
             // Wait for a wake-up or the retry interval, whichever comes first.

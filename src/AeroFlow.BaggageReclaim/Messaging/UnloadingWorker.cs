@@ -23,7 +23,7 @@ public sealed partial class UnloadingWorker(
     {
         var settings = options.Value.ToSettings();
         var now = clock.GetUtcNow();
-        var events = store.UpdateWithEvents(hall => (Result<UnloadingStep>)UnloadingSimulator.Tick(hall, now, settings, _random.NextDouble))
+        var events = store.UpdateWithEvents(hall => (Result<HallChange>)UnloadingSimulator.Tick(hall, now, settings, _random.NextDouble))
             .Match(step => step.Events, _ => []);
         if (events.Count > 0)
         {

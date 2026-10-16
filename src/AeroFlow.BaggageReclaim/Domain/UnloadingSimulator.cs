@@ -9,8 +9,6 @@ public sealed record UnloadingSettings(
     int CollectedPerTick,
     double DelayedBagProbability);
 
-/// <summary>Result of one simulation tick: the new hall and the baggage events it produced, in order.</summary>
-public sealed record UnloadingStep(ReclaimHall Hall, ImmutableList<BaggageEvent> Events);
 
 /// <summary>
 /// Pure simulation of bags coming off aircraft. Each tick, for every open reclaim whose first-bag time has passed:
@@ -22,7 +20,7 @@ public sealed record UnloadingStep(ReclaimHall Hall, ImmutableList<BaggageEvent>
 /// </summary>
 public static class UnloadingSimulator
 {
-    public static UnloadingStep Tick(ReclaimHall hall, DateTimeOffset now, UnloadingSettings settings, Func<double> random)
+    public static HallChange Tick(ReclaimHall hall, DateTimeOffset now, UnloadingSettings settings, Func<double> random)
     {
         var events = ImmutableList.CreateBuilder<BaggageEvent>();
         var open = hall.Reclaims.Values
@@ -61,7 +59,7 @@ public static class UnloadingSimulator
                 if (random() < settings.DelayedBagProbability)
                 {
                     bags[i] = bags[i] with { Status = BagStatus.Delayed };
-                    events.Add(BaggageEvent.For(reclaim, BaggageEventType.BagDelayed, now, BaggageEvent.TickId(reclaim, BaggageEventType.BagDelayed, bags[i].Tag.Value)) with
+                    events.Add(BaggageEvent.For(reclaim, BaggageEventType.BagDelayed, now, BaggageEvent.TickId(reclaim, bags[i].Tag)) with
                     {
                         BagTag = bags[i].Tag.Value,
                         Reason = "not loaded at origin",
@@ -102,6 +100,6 @@ public static class UnloadingSimulator
             }
         }
 
-        return new UnloadingStep(hall, events.ToImmutable());
+        return new HallChange(hall, events.ToImmutable());
     }
 }

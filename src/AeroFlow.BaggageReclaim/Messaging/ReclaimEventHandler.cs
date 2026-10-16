@@ -73,8 +73,8 @@ public sealed class ReclaimEventHandler(IReclaimHallStore store, IOptions<Flight
         // The change, the processed id and (for Landed) BeltAssigned are saved in one atomic update: the event sits
         // in the outbox until OutboxDispatcher sends it, so a failed send is retried rather than lost (ADR-0017).
         return store.UpdateWithEvents(hall => hall.HasProcessed(evt.EventId)
-                ? new UnloadingStep(hall, [])
-                : ReclaimPlanner.Apply(hall, command).Map(next => new UnloadingStep(
+                ? new HallChange(hall, [])
+                : ReclaimPlanner.Apply(hall, command).Map(next => new HallChange(
                     next.MarkProcessed(evt.EventId),
                     evt.EventType == FlightEventType.Landed ? BeltAssigned(next, flightId, evt) : [])))
             .Match<HandleOutcome>(

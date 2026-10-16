@@ -17,7 +17,7 @@ public interface IReclaimHallStore
     /// As <see cref="Update"/>, but the transition also returns the baggage
     /// events the change produced, and they are added to the outbox in the same atomic step.
     /// </summary>
-    Result<UnloadingStep> UpdateWithEvents(Func<ReclaimHall, Result<UnloadingStep>> transition);
+    Result<HallChange> UpdateWithEvents(Func<ReclaimHall, Result<HallChange>> transition);
 
     /// <summary>Baggage events stored but not yet published, oldest first.</summary>
     IReadOnlyList<BaggageEvent> Pending();

@@ -120,7 +120,7 @@ In-memory hall; logs `Published {EventType} for {FlightNumber} on belt {Belt}`.
 | `Delayed`/`Cancelled` for a flight without a belt | debug `ignored` | none | normal: most delays happen before landing |
 | Unreadable or empty body | warning `Dead-lettered unreadable flight event`; dead-letter queue grows | event lost | contract copy drifted (#71) |
 | Publish to `baggage-events` fails (`BeltAssigned` or tick events) | warning `Publishing baggage events failed; N pending in the outbox, retrying in 5s` | events wait in the outbox, in order, and are re-sent every `Outbox:RetrySeconds` (and on the next change); the hall keeps moving | check the emulator; a growing pending count means the bus is still down |
-| Send succeeded but reported failure (timeout) | same warning, then a second `Published ...` | sent twice with the same `MessageId`; duplicate detection and consumers drop the copy | none |
+| Send succeeded but reported failure (timeout) | same warning, then a second `Published ...` | sent twice with the same `MessageId`; duplicate detection on `baggage-events` (turned on in the aeroflow-local AppHost, [aeroflow-local#11](https://github.com/aeroflow-air/aeroflow-local/pull/11); Standard tier in Azure) and consumers de-duplicating by `eventId` drop the copy | none |
 | Bus unreachable for consuming | warning `Service Bus processor error` | no new reclaims | check the emulator |
 | `baggage-events` subscription not read | message count grows in the Aspire dashboard | none until a reader exists | expected until #53 |
 | Process restart | hall empty, applied ids forgotten | in-flight reclaims and unsent outbox events lost; no completion events | expected; a durable store must keep the outbox in the same transaction (ADR-0017) |
@@ -137,3 +137,4 @@ In-memory hall; logs `Published {EventType} for {FlightNumber} on belt {Belt}`.
 - Event contracts are local copies, and `BaggageEvent` lives only here ([#71](https://github.com/aeroflow-air/platform-handbook/issues/71)).
 - `workload.yaml` cannot declare the subscription or the topic ([#64](https://github.com/aeroflow-air/platform-handbook/issues/64)).
 - In-memory state (hall and outbox); no authentication.
+- The outbox has no size limit and no poison handling: an event that can never be sent (for example too large) holds back everything behind it, and a long outage grows memory. Acceptable for the demo; revisit with a durable store (ADR-0017).

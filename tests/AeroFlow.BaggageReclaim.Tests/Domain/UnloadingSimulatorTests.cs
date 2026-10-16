@@ -96,7 +96,7 @@ public sealed class UnloadingSimulatorTests
         Assert.Equal(first.Events.Count, first.Events.Select(e => e.EventId).Distinct().Count());
     }
 
-    private static UnloadingStep Tick(ReclaimHall hall, DateTimeOffset now) =>
+    private static HallChange Tick(ReclaimHall hall, DateTimeOffset now) =>
         UnloadingSimulator.Tick(hall, now, Settings, () => 0.5);
 
     private static ReclaimHall Hall(int bags)
