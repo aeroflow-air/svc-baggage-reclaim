@@ -17,49 +17,100 @@ public sealed class BaggagePublishingTests
     private readonly FakeTimeProvider _clock = new(Now);
 
     [Fact]
-    public void Belt_assigned_uses_the_landed_event_id()
+    public void Landed_queues_belt_assigned_with_an_id_derived_from_the_flight_event()
     {
-        var handler = new ReclaimEventHandler(_store, Options.Create(new FlightEventsOptions()));
         var landed = Landed();
-        handler.Handle(landed);
+        Handler().Handle(landed);
 
-        var evt = Assert.IsType<Option<BaggageEvent>.Some>(handler.BeltAssignedFor(landed)).Value;
+        var evt = Assert.Single(_store.Pending());
 
-        Assert.Equal((landed.EventId, BaggageEventType.BeltAssigned, "SIM-00001", "BA123", "1"), (evt.EventId, evt.EventType, evt.FlightId, evt.FlightNumber, evt.Belt));
+        Assert.Equal((BaggageEventType.BeltAssigned, "SIM-00001", "BA123", "1"), (evt.EventType, evt.FlightId, evt.FlightNumber, evt.Belt));
+        Assert.Equal(BaggageEvent.CausedBy(landed.EventId, BaggageEventType.BeltAssigned), evt.EventId);
+        Assert.NotEqual(landed.EventId, evt.EventId); // never collides with the Landed event in a consumer's seen set
     }
 
     [Fact]
-    public void No_belt_assigned_for_other_events()
+    public void Redelivered_landed_queues_nothing_more()
     {
-        var handler = new ReclaimEventHandler(_store, Options.Create(new FlightEventsOptions()));
+        var landed = Landed();
+        var handler = Handler();
+        handler.Handle(landed);
 
-        Assert.IsType<Option<BaggageEvent>.None>(handler.BeltAssignedFor(Landed() with { EventType = FlightEventType.Delayed }));
+        Assert.IsType<HandleOutcome.Ignored>(handler.Handle(landed));
+
+        Assert.Single(_store.Pending());
+    }
+
+    [Fact]
+    public void Other_events_queue_nothing()
+    {
+        var handler = Handler();
+        handler.Handle(Landed() with { EventType = FlightEventType.Delayed });
+
+        Assert.Empty(_store.Pending());
+    }
+
+    [Fact]
+    public async Task Failed_belt_assigned_send_is_retried_not_lost()
+    {
+        Handler().Handle(Landed());
+        _publisher.FailNext = true;
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Dispatcher().DrainAsync(CancellationToken.None));
+        Assert.Single(_store.Pending());
+
+        await Dispatcher().DrainAsync(CancellationToken.None);
+
+        Assert.Equal(BaggageEventType.BeltAssigned, Assert.Single(_publisher.Published).EventType);
+        Assert.Empty(_store.Pending());
     }
 
     [Fact]
     public async Task Worker_runs_a_landed_flight_through_to_reclaim_complete()
     {
-        new ReclaimEventHandler(_store, Options.Create(new FlightEventsOptions { MinBagsPerFlight = 5, MaxBagsPerFlight = 5 })).Handle(Landed());
+        Handler(new FlightEventsOptions { MinBagsPerFlight = 5, MaxBagsPerFlight = 5 }).Handle(Landed());
         var worker = Worker(new BaggageOptions { FirstBagAfterLandingSeconds = 10, BagsPerTick = 2, CollectedPerTick = 2, DelayedBagProbability = 0, Seed = 1 });
 
         for (var i = 0; i < 10; i++)
         {
             _clock.Advance(TimeSpan.FromSeconds(5));
-            await worker.TickAsync(CancellationToken.None);
+            worker.Tick();
         }
 
+        await Dispatcher().DrainAsync(CancellationToken.None);
+
         Assert.Equal(
-            [BaggageEventType.BagsOnBelt, BaggageEventType.LastBagOnBelt, BaggageEventType.ReclaimComplete],
+            [BaggageEventType.BeltAssigned, BaggageEventType.BagsOnBelt, BaggageEventType.LastBagOnBelt, BaggageEventType.ReclaimComplete],
             _publisher.Published.Select(e => e.EventType));
         Assert.IsType<ReclaimStatus.Complete>(_store.Current().Reclaims.Values.Single().Status);
     }
 
     [Fact]
-    public async Task Worker_publishes_nothing_when_idle()
+    public async Task Tick_events_survive_a_failed_publish_and_keep_their_order()
     {
-        await Worker(new BaggageOptions()).TickAsync(CancellationToken.None);
+        Handler(new FlightEventsOptions { MinBagsPerFlight = 2, MaxBagsPerFlight = 2 }).Handle(Landed());
+        var worker = Worker(new BaggageOptions { FirstBagAfterLandingSeconds = 0, BagsPerTick = 2, CollectedPerTick = 2, DelayedBagProbability = 0, Seed = 1 });
+        await Dispatcher().DrainAsync(CancellationToken.None);
+        _publisher.FailNext = true;
 
-        Assert.Empty(_publisher.Published);
+        worker.Tick(); // the hall moves on: bags on belt, last bag on belt
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Dispatcher().DrainAsync(CancellationToken.None));
+        _clock.Advance(TimeSpan.FromSeconds(5));
+        worker.Tick(); // collected: reclaim complete
+        await Dispatcher().DrainAsync(CancellationToken.None);
+
+        Assert.Equal(
+            [BaggageEventType.BeltAssigned, BaggageEventType.BagsOnBelt, BaggageEventType.LastBagOnBelt, BaggageEventType.ReclaimComplete],
+            _publisher.Published.Select(e => e.EventType));
+        Assert.Empty(_store.Pending());
+    }
+
+    [Fact]
+    public void Worker_queues_nothing_when_idle()
+    {
+        Assert.Empty(Worker(new BaggageOptions()).Tick());
+
+        Assert.Empty(_store.Pending());
     }
 
     [Fact]
@@ -84,18 +135,32 @@ public sealed class BaggagePublishingTests
         Assert.Equal((1, 1, 1.0, TimeSpan.Zero), (settings.BagsPerTick, settings.CollectedPerTick, settings.DelayedBagProbability, settings.FirstBagAfterLanding));
     }
 
+    private ReclaimEventHandler Handler(FlightEventsOptions? options = null) =>
+        new(_store, Options.Create(options ?? new FlightEventsOptions()));
+
+    private OutboxDispatcher Dispatcher() =>
+        new(_store, _publisher, Options.Create(new OutboxOptions()), _clock, NullLogger<OutboxDispatcher>.Instance);
+
     private UnloadingWorker Worker(BaggageOptions options) =>
-        new(_store, _publisher, Options.Create(options), _clock, NullLogger<UnloadingWorker>.Instance);
+        new(_store, Dispatcher(), Options.Create(options), _clock, NullLogger<UnloadingWorker>.Instance);
 
     private FlightEventMessage Landed() =>
         new(Guid.NewGuid(), "SIM-00001", "BA123", FlightEventType.Landed, "AMS", "LHR", Now.AddHours(-1), Now);
 
     private sealed class CapturingPublisher : IBaggageEventPublisher
     {
+        public bool FailNext { get; set; }
+
         public List<BaggageEvent> Published { get; } = [];
 
         public Task PublishAsync(IReadOnlyCollection<BaggageEvent> events, CancellationToken cancellationToken)
         {
+            if (FailNext)
+            {
+                FailNext = false;
+                throw new InvalidOperationException("bus down");
+            }
+
             Published.AddRange(events);
             return Task.CompletedTask;
         }

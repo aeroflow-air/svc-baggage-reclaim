@@ -25,7 +25,7 @@ It does **not** handle departing bags, does not know real passenger numbers, and
 | Pure domain: `ReclaimPlanner.Apply(hall, command)` and `UnloadingSimulator.Tick` | testable without I/O or timers | [ADR-0004](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0004-functional-style-csharp.md) |
 | Owns and publishes its own topic `baggage-events` | one owner per topic | [ADR-0013](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0013-central-event-bus.md) |
 | Idempotent by event id, stored in the same atomic update as the change (last 10,000) | at-least-once delivery must not assign two belts | `Messaging/ReclaimEventHandler.cs` |
-| `BeltAssigned` reuses the `Landed` event's id | consumers can de-duplicate across redelivery | `Domain/BaggageEvent.cs` |
+| Outbox in the store plus deterministic event ids | a failed publish is retried, never lost; re-sends carry the same id | [ADR-0017](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0017-reliable-event-publishing.md), `Domain/BaggageEvent.cs` |
 | Least busy belt with room, ties to the first listed | spreads load | `Domain/ReclaimPlanner.cs` |
 | Stable bag count per flight (60-180) | the simulator sends no passenger numbers | `FlightEvents:Min/MaxBagsPerFlight` |
 | Publisher is a no-op without `messaging` | runs and tests without the bus | `Program.cs` |
@@ -36,14 +36,13 @@ It does **not** handle departing bags, does not know real passenger numbers, and
 flowchart LR
   FE[[flight-events<br/>sub: baggage-reclaim]] --> P[FlightEventsProcessor] --> H[ReclaimEventHandler]
   H -->|ReclaimCommand| S[(InMemoryReclaimHallStore)]
-  H -->|BeltAssigned| Pub[ServiceBusBaggageEventPublisher]
   W[UnloadingWorker<br/>every TickSeconds] -->|UnloadingSimulator.Tick| S
-  W --> Pub --> BE[[baggage-events]]
+  S -->|outbox, same update| O[OutboxDispatcher] --> Pub[ServiceBusBaggageEventPublisher] --> BE[[baggage-events]]
 ```
 
 - **Domain**: `ReclaimHall` (belts, reclaims, applied event ids), commands `AssignBelt`, `RecordDelay`, `CancelReclaim`, `MoveBag`, `CompleteReclaim`; bag states `Unloaded`, `OnBelt`, `Delayed`, `Collected`, `Missing`.
 - **Storage**: in memory; seven belts (`1` to `7`) of capacity two flights each.
-- **Messaging**: processor (one message at a time, manual completion), handler, unloading worker and publisher.
+- **Messaging**: processor (one message at a time, manual completion), handler, unloading worker, outbox dispatcher and publisher. The handler and the worker never publish directly: each hall change and the events it produced (`BeltAssigned`, tick events) are saved in **one atomic store update**, and `OutboxDispatcher` sends them in order ([ADR-0017](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0017-reliable-event-publishing.md)).
 
 ## Inputs
 
@@ -71,6 +70,7 @@ Contract: `Messaging/FlightEventMessage.cs`, a **local copy** of `AeroFlow.Local
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
+| `Outbox:RetrySeconds` | `5` | how often unsent baggage events are retried when nothing else wakes the dispatcher |
 | `ConnectionStrings:messaging` | unset | when unset: no processor, no-op publisher |
 | `FlightEvents:Topic` / `Subscription` | `flight-events` / `baggage-reclaim` | |
 | `FlightEvents:HomeAirport` | `LHR` | arrivals here get a belt |
@@ -87,11 +87,11 @@ Contract: `Messaging/FlightEventMessage.cs`, a **local copy** of `AeroFlow.Local
 
 ### Events published
 
-Topic `baggage-events`. Body `BaggageEvent` (JSON, web casing, nulls omitted): `eventId`, `eventType`, `flightId`, `flightNumber`, `belt`, `occurredAt` plus the fields below. `MessageId` = event id, `Subject` = event type, `CorrelationId` = flight id.
+Topic `baggage-events`. Body `BaggageEvent` (JSON, web casing, nulls omitted): `eventId`, `eventType`, `flightId`, `flightNumber`, `belt`, `occurredAt` plus the fields below. `MessageId` = event id, `Subject` = event type, `CorrelationId` = flight id. Event ids are deterministic (UUIDv5), so a re-send has the same `MessageId`; delivery is **at least once** and consumers de-duplicate by `eventId`.
 
 | Event type | When | Extra fields |
 | --- | --- | --- |
-| `BeltAssigned` | `Landed` applied (event id = the `Landed` event's id) | |
+| `BeltAssigned` | `Landed` applied (event id derived from the `Landed` event's id and the type) | |
 | `BagsOnBelt` | first bag reaches the belt (~10 s after landing, plus any delay) | `bagCount` |
 | `BagDelayed` | a bag misses the flight (1%) | `bagTag`, `reason` |
 | `LastBagOnBelt` | hold empty | |
@@ -119,20 +119,21 @@ In-memory hall; logs `Published {EventType} for {FlightNumber} on belt {Belt}`.
 | Redelivered flight event | debug `ignored` | none (idempotent) | none |
 | `Delayed`/`Cancelled` for a flight without a belt | debug `ignored` | none | normal: most delays happen before landing |
 | Unreadable or empty body | warning `Dead-lettered unreadable flight event`; dead-letter queue grows | event lost | contract copy drifted (#71) |
-| Publish fails during an unloading tick | warning `Baggage unloading tick failed; will retry next tick` | the hall has already advanced, so that tick's events are **lost**, not retried | check the emulator; consumers must tolerate gaps |
+| Publish to `baggage-events` fails (`BeltAssigned` or tick events) | warning `Publishing baggage events failed; N pending in the outbox, retrying in 5s` | events wait in the outbox, in order, and are re-sent every `Outbox:RetrySeconds` (and on the next change); the hall keeps moving | check the emulator; a growing pending count means the bus is still down |
+| Send succeeded but reported failure (timeout) | same warning, then a second `Published ...` | sent twice with the same `MessageId`; duplicate detection and consumers drop the copy | none |
 | Bus unreachable for consuming | warning `Service Bus processor error` | no new reclaims | check the emulator |
 | `baggage-events` subscription not read | message count grows in the Aspire dashboard | none until a reader exists | expected until #53 |
-| Process restart | hall empty, applied ids forgotten | in-flight reclaims lost; no completion events | expected |
+| Process restart | hall empty, applied ids forgotten | in-flight reclaims and unsent outbox events lost; no completion events | expected; a durable store must keep the outbox in the same transaction (ADR-0017) |
 
 ## Running and testing
 
 - Standalone: `dotnet run --project src/AeroFlow.BaggageReclaim`, then `curl http://localhost:8080/health`. Nothing else happens without the bus.
 - With the airport: clone next to `aeroflow-local` (the AppHost will not build otherwise) and run its AppHost. Healthy logs after an LHR landing: `AssignBelt for U21234 after Landed`, `Published BeltAssigned ...`, then `BagsOnBelt`, `LastBagOnBelt`, `ReclaimComplete` over ~30 s. Use `Baggage__TickSeconds=1` to speed up.
-- Tests: `dotnet test` covers the planner, unloading simulator, event handler (including idempotency), publishing and health.
+- Tests: `dotnet test` covers the planner, unloading simulator, event handler (including idempotency), deterministic ids, the outbox (failed publish, retry, ordering), publishing and health.
 
 ## Known gaps
 
 - No query API ([#69](https://github.com/aeroflow-air/platform-handbook/issues/69)); no reader for `baggage-events` ([#53](https://github.com/aeroflow-air/platform-handbook/issues/53)).
 - Event contracts are local copies, and `BaggageEvent` lives only here ([#71](https://github.com/aeroflow-air/platform-handbook/issues/71)).
 - `workload.yaml` cannot declare the subscription or the topic ([#64](https://github.com/aeroflow-air/platform-handbook/issues/64)).
-- Publishing is not transactional with state (see failure modes); in-memory state; no authentication.
+- In-memory state (hall and outbox); no authentication.

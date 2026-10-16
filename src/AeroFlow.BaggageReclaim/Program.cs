@@ -36,6 +36,11 @@ else
     builder.Services.AddSingleton<IBaggageEventPublisher, NoOpBaggageEventPublisher>();
 }
 
+// Outbox (ADR-0017): baggage events are stored with the hall change and sent from here, so a failed send is retried.
+builder.Services.Configure<OutboxOptions>(builder.Configuration.GetSection(OutboxOptions.SectionName));
+builder.Services.AddSingleton<OutboxDispatcher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<OutboxDispatcher>());
+
 if (builder.Configuration.GetValue(BaggageOptions.SectionName + ":" + nameof(BaggageOptions.SimulateUnloading), true))
 {
     builder.Services.AddHostedService<UnloadingWorker>();

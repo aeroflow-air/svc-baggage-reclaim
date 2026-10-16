@@ -39,4 +39,17 @@ public sealed record BaggageEvent(
 
     public static BaggageEvent For(FlightReclaim reclaim, BaggageEventType type, DateTimeOffset at, Guid id) =>
         new(id, type, reclaim.Flight.Value, reclaim.FlightNumber.Value, reclaim.Belt.Value, at);
+
+    /// <summary>Namespace for ids of events produced by unloading ticks, which have no triggering message.</summary>
+    public static readonly Guid TickNamespace = Guid.Parse("3b1f6a52-6c0e-4c7e-9a43-0b6f6b2a8d17");
+
+    /// <summary>
+    /// Deterministic id for a tick event (ADR-0017): flight, landing time, event type and, for <c>BagDelayed</c>, the
+    /// bag tag. Each of these events happens at most once per reclaim, so the id is unique and stable.
+    /// </summary>
+    public static Guid TickId(FlightReclaim reclaim, BaggageEventType type, string? bagTag = null) =>
+        EventIds.Derive(TickNamespace, $"{reclaim.Flight.Value}/{reclaim.LandedAt.UtcTicks}/{type}/{bagTag}");
+
+    /// <summary>Deterministic id for an event caused by a flight event: that event's id plus the baggage event type.</summary>
+    public static Guid CausedBy(Guid flightEventId, BaggageEventType type) => EventIds.Derive(flightEventId, type.ToString());
 }

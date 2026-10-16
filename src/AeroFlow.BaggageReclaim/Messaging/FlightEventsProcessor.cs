@@ -13,7 +13,7 @@ namespace AeroFlow.BaggageReclaim.Messaging;
 public sealed partial class FlightEventsProcessor(
     ServiceBusClient client,
     ReclaimEventHandler handler,
-    IBaggageEventPublisher publisher,
+    OutboxDispatcher outbox,
     IOptions<FlightEventsOptions> options,
     ILogger<FlightEventsProcessor> logger) : IHostedService, IAsyncDisposable
 {
@@ -75,10 +75,8 @@ public sealed partial class FlightEventsProcessor(
         {
             case HandleOutcome.Applied a:
                 LogApplied(a.Command, evt.FlightNumber, evt.EventType);
-                if (handler.BeltAssignedFor(evt) is Option<BaggageEvent>.Some assigned)
-                {
-                    await publisher.PublishAsync([assigned.Value], args.CancellationToken);
-                }
+                // Any BeltAssigned is already in the outbox with the hall change; completing the message is safe.
+                outbox.Notify();
 
                 break;
             case HandleOutcome.Rejected r:

@@ -17,11 +17,12 @@ public sealed record UnloadingStep(ReclaimHall Hall, ImmutableList<BaggageEvent>
 /// up to <see cref="UnloadingSettings.BagsPerTick"/> unloaded bags reach the belt (a few may be delayed instead),
 /// then passengers collect up to <see cref="UnloadingSettings.CollectedPerTick"/> bags already on the belt.
 /// Emits <c>BagsOnBelt</c> on the first bag, <c>BagDelayed</c> per delayed bag, <c>LastBagOnBelt</c> when nothing is
-/// left in the hold and <c>ReclaimComplete</c> once the belt is empty. Randomness and ids are passed in, so tests are exact.
+/// left in the hold and <c>ReclaimComplete</c> once the belt is empty. Randomness is passed in, so tests are exact. Event ids are deterministic
+/// (<see cref="BaggageEvent.TickId"/>, ADR-0017): the same flight, landing and event always get the same id.
 /// </summary>
 public static class UnloadingSimulator
 {
-    public static UnloadingStep Tick(ReclaimHall hall, DateTimeOffset now, UnloadingSettings settings, Func<double> random, Func<Guid> newId)
+    public static UnloadingStep Tick(ReclaimHall hall, DateTimeOffset now, UnloadingSettings settings, Func<double> random)
     {
         var events = ImmutableList.CreateBuilder<BaggageEvent>();
         var open = hall.Reclaims.Values
@@ -60,7 +61,7 @@ public static class UnloadingSimulator
                 if (random() < settings.DelayedBagProbability)
                 {
                     bags[i] = bags[i] with { Status = BagStatus.Delayed };
-                    events.Add(BaggageEvent.For(reclaim, BaggageEventType.BagDelayed, now, newId()) with
+                    events.Add(BaggageEvent.For(reclaim, BaggageEventType.BagDelayed, now, BaggageEvent.TickId(reclaim, BaggageEventType.BagDelayed, bags[i].Tag.Value)) with
                     {
                         BagTag = bags[i].Tag.Value,
                         Reason = "not loaded at origin",
@@ -78,12 +79,12 @@ public static class UnloadingSimulator
 
             if (!hadBagOnBelt && hasBagOnBelt)
             {
-                events.Add(BaggageEvent.For(reclaim, BaggageEventType.BagsOnBelt, now, newId()) with { BagCount = reclaim.Bags.Count });
+                events.Add(BaggageEvent.For(reclaim, BaggageEventType.BagsOnBelt, now, BaggageEvent.TickId(reclaim, BaggageEventType.BagsOnBelt)) with { BagCount = reclaim.Bags.Count });
             }
 
             if (hadUnloaded && !hasUnloaded && hasBagOnBelt)
             {
-                events.Add(BaggageEvent.For(reclaim, BaggageEventType.LastBagOnBelt, now, newId()));
+                events.Add(BaggageEvent.For(reclaim, BaggageEventType.LastBagOnBelt, now, BaggageEvent.TickId(reclaim, BaggageEventType.LastBagOnBelt)));
             }
 
             hall = hall with { Reclaims = hall.Reclaims.SetItem(reclaim.Flight, reclaim) };
@@ -92,7 +93,7 @@ public static class UnloadingSimulator
             {
                 hall = ReclaimPlanner.Apply(hall, new CompleteReclaim(reclaim.Flight, now)).Match(h => h, _ => hall);
                 var done = hall.Reclaims[reclaim.Flight];
-                events.Add(BaggageEvent.For(done, BaggageEventType.ReclaimComplete, now, newId()) with
+                events.Add(BaggageEvent.For(done, BaggageEventType.ReclaimComplete, now, BaggageEvent.TickId(done, BaggageEventType.ReclaimComplete)) with
                 {
                     BagCount = done.Bags.Count,
                     BagsCollected = done.BagsCollected,
