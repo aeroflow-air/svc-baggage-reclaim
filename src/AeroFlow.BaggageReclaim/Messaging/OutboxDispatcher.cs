@@ -42,7 +42,7 @@ public sealed partial class OutboxDispatcher(
         foreach (var evt in store.Pending())
         {
             await publisher.PublishAsync([evt], cancellationToken);
-            store.MarkPublished(evt.EventId);
+            store.MarkPublished(evt);
             sent++;
         }
 

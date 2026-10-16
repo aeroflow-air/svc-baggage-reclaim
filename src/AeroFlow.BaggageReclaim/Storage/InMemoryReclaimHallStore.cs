@@ -38,14 +38,13 @@ public sealed class InMemoryReclaimHallStore(ReclaimHall seed) : IReclaimHallSto
 
     public IReadOnlyList<BaggageEvent> Pending() => Volatile.Read(ref _state).Outbox;
 
-    public void MarkPublished(Guid eventId)
+    public void MarkPublished(BaggageEvent sent)
     {
         while (true)
         {
             var snapshot = Volatile.Read(ref _state);
-            var outbox = snapshot.Outbox.RemoveAll(e => e.EventId == eventId);
-            if (outbox.Count == snapshot.Outbox.Count
-                || ReferenceEquals(Interlocked.CompareExchange(ref _state, snapshot with { Outbox = outbox }, snapshot), snapshot))
+            if (snapshot.Outbox.IsEmpty || !ReferenceEquals(snapshot.Outbox[0], sent)
+                || ReferenceEquals(Interlocked.CompareExchange(ref _state, snapshot with { Outbox = snapshot.Outbox.RemoveAt(0) }, snapshot), snapshot))
             {
                 return;
             }

@@ -126,11 +126,58 @@ public sealed class BaggagePublishingTests
         await Task.Delay(50);
         Assert.Equal(1, _publisher.Attempts);
 
-        _clock.Advance(TimeSpan.FromSeconds(5));
-        await WaitUntil(() => _store.Pending().Count == 0);
+        await AdvanceUntil(() => _store.Pending().Count == 0);
         Assert.Equal(BaggageEventType.BeltAssigned, Assert.Single(_publisher.Published).EventType);
 
         await dispatcher.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Running_dispatcher_sends_straight_away_when_notified()
+    {
+        var dispatcher = Dispatcher();
+        await dispatcher.StartAsync(CancellationToken.None);
+        await WaitUntil(() => _publisher.Attempts == 0); // started, outbox empty
+
+        Handler().Handle(Landed());
+        dispatcher.Notify();
+
+        await WaitUntil(() => _publisher.Published.Count == 1); // clock frozen: only the wake-up can do this
+        await dispatcher.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public void Rejected_landed_queues_no_belt_assigned()
+    {
+        var handler = Handler();
+        for (var i = 0; i < 14; i++)
+        {
+            handler.Handle(Landed() with { FlightId = $"SIM-{i:D5}", FlightNumber = $"BA{100 + i}" });
+        }
+
+        var pending = _store.Pending().Count;
+
+        Assert.IsType<HandleOutcome.Rejected>(handler.Handle(Landed() with { FlightId = "SIM-99999", FlightNumber = "BA999" }));
+        Assert.Equal(pending, _store.Pending().Count);
+    }
+
+    [Fact]
+    public void Derive_matches_the_rfc_uuid_v5_test_vector()
+    {
+        var dns = Guid.Parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
+
+        Assert.Equal(Guid.Parse("2ed6657d-e927-568b-95e1-2665a8aea6a2"), EventIds.Derive(dns, "www.example.com"));
+    }
+
+    private async Task AdvanceUntil(Func<bool> condition)
+    {
+        for (var i = 0; i < 200 && !condition(); i++)
+        {
+            _clock.Advance(TimeSpan.FromSeconds(5));
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition());
     }
 
     private static async Task WaitUntil(Func<bool> condition)

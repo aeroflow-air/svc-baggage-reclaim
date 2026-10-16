@@ -22,6 +22,9 @@ public interface IReclaimHallStore
     /// <summary>Baggage events stored but not yet published, oldest first.</summary>
     IReadOnlyList<BaggageEvent> Pending();
 
-    /// <summary>Removes a published event from the outbox. Unknown ids are ignored.</summary>
-    void MarkPublished(Guid eventId);
+    /// <summary>
+    /// Removes <paramref name="sent"/> from the head of the outbox once it is published. Only that exact entry is
+    /// removed, so another pending event can never be dropped by mistake. Does nothing if it is not the head.
+    /// </summary>
+    void MarkPublished(BaggageEvent sent);
 }
