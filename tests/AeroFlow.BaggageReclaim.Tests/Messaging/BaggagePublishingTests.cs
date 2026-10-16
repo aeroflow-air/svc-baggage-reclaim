@@ -162,6 +162,35 @@ public sealed class BaggagePublishingTests
     }
 
     [Fact]
+    public async Task Overlapping_drains_send_each_event_once_in_order()
+    {
+        Handler().Handle(Landed());
+        Handler().Handle(Landed() with { FlightId = "SIM-00002", FlightNumber = "BA124" });
+        var dispatcher = Dispatcher();
+
+        await Task.WhenAll(dispatcher.DrainAsync(CancellationToken.None), dispatcher.DrainAsync(CancellationToken.None));
+
+        Assert.Equal(["SIM-00001", "SIM-00002"], _publisher.Published.Select(e => e.FlightId));
+        Assert.Empty(_store.Pending());
+    }
+
+    [Fact]
+    public async Task Stopping_the_dispatcher_drains_what_is_pending()
+    {
+        var dispatcher = Dispatcher();
+        await dispatcher.StartAsync(CancellationToken.None);
+        _publisher.FailNext = true;
+        Handler().Handle(Landed());
+        dispatcher.Notify();
+        await WaitUntil(() => _publisher.Attempts >= 1);
+
+        await dispatcher.StopAsync(CancellationToken.None);
+
+        Assert.Empty(_store.Pending());
+        Assert.Single(_publisher.Published);
+    }
+
+    [Fact]
     public void Derive_matches_the_rfc_uuid_v5_test_vector()
     {
         var dns = Guid.Parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8");

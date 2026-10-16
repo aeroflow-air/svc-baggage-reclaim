@@ -24,7 +24,7 @@ public interface IReclaimHallStore
 
     /// <summary>
     /// Removes <paramref name="sent"/> from the head of the outbox once it is published. Only that exact entry is
-    /// removed, so another pending event can never be dropped by mistake. Does nothing if it is not the head.
+    /// removed, so another pending event can never be dropped by mistake. Returns false, changing nothing, if it is not the head.
     /// </summary>
-    void MarkPublished(BaggageEvent sent);
+    bool MarkPublished(BaggageEvent sent);
 }

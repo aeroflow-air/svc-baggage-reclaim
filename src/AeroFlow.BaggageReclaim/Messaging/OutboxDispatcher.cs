@@ -1,5 +1,6 @@
 using System.Threading.Channels;
 using AeroFlow.BaggageReclaim.Storage;
+using Azure.Messaging.ServiceBus;
 using Microsoft.Extensions.Options;
 
 namespace AeroFlow.BaggageReclaim.Messaging;
@@ -27,6 +28,7 @@ public sealed partial class OutboxDispatcher(
     ILogger<OutboxDispatcher> logger) : BackgroundService
 {
     private readonly ILogger _logger = logger;
+    private readonly SemaphoreSlim _draining = new(1, 1);
     private readonly Channel<bool> _wake = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
     {
         FullMode = BoundedChannelFullMode.DropWrite,
@@ -35,18 +37,55 @@ public sealed partial class OutboxDispatcher(
     /// <summary>Asks the dispatcher to drain the outbox now instead of waiting for the retry interval.</summary>
     public void Notify() => _wake.Writer.TryWrite(true);
 
-    /// <summary>Sends everything pending, stopping at the first failure. Returns how many were sent. Public for tests.</summary>
+    /// <summary>
+    /// Sends everything pending, stopping at the first failure. Returns how many were sent. Only one drain runs at a
+    /// time, and it stops if the head changed under it, so overlapping callers can't re-send or reorder. Public for tests.
+    /// </summary>
     public async Task<int> DrainAsync(CancellationToken cancellationToken)
     {
-        var sent = 0;
-        foreach (var evt in store.Pending())
+        await _draining.WaitAsync(cancellationToken);
+        try
         {
-            await publisher.PublishAsync([evt], cancellationToken);
-            store.MarkPublished(evt);
-            sent++;
+            var sent = 0;
+            foreach (var evt in store.Pending())
+            {
+                await publisher.PublishAsync([evt], cancellationToken);
+                if (!store.MarkPublished(evt))
+                {
+                    break;
+                }
+
+                sent++;
+            }
+
+            return sent;
+        }
+        finally
+        {
+            _draining.Release();
+        }
+    }
+
+    /// <summary>
+    /// Stops the loop, then makes one best-effort drain within the host's shutdown timeout so a routine deploy doesn't
+    /// drop pending events. Registered before the message processor, so it stops after it (hosts stop in reverse order).
+    /// </summary>
+    public override async Task StopAsync(CancellationToken cancellationToken)
+    {
+        await base.StopAsync(cancellationToken);
+        try
+        {
+            await DrainAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            LogShutdownDrainFailed(ex);
         }
 
-        return sent;
+        if (store.Pending().Count is var left and > 0)
+        {
+            LogPendingAtShutdown(left);
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -62,7 +101,15 @@ public sealed partial class OutboxDispatcher(
             {
                 // Includes a publisher timeout (OperationCanceledException) that isn't a shutdown: never stop the host,
                 // or the in-memory outbox would be lost.
-                LogPublishFailed(ex, store.Pending().Count, retry.TotalSeconds);
+                if (ex is ServiceBusException { IsTransient: false } permanent)
+                {
+                    // Won't fix itself (too large, unauthorised, topic missing): holds back everything behind it.
+                    LogPermanentFailure(permanent, permanent.Reason.ToString(), store.Pending().Count);
+                }
+                else
+                {
+                    LogPublishFailed(ex, store.Pending().Count, retry.TotalSeconds);
+                }
 
                 // Back off for the full interval: wake-ups from new changes don't cut it short while the bus is down.
                 await Task.Delay(retry, clock, stoppingToken).ContinueWith(_ => { }, TaskScheduler.Default);
@@ -80,4 +127,13 @@ public sealed partial class OutboxDispatcher(
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Publishing baggage events failed; {Pending} pending in the outbox, retrying in {RetrySeconds}s")]
     private partial void LogPublishFailed(Exception ex, int pending, double retrySeconds);
+
+    [LoggerMessage(Level = LogLevel.Error, Message = "Permanent failure publishing baggage events ({Reason}); {Pending} pending in the outbox are blocked behind it")]
+    private partial void LogPermanentFailure(Exception ex, string reason, int pending);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Final drain of baggage events at shutdown failed")]
+    private partial void LogShutdownDrainFailed(Exception ex);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Stopping with {Pending} baggage events still in the outbox; they are lost with the in-memory state")]
+    private partial void LogPendingAtShutdown(int pending);
 }

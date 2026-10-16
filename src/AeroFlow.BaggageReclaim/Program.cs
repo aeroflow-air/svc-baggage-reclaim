@@ -25,6 +25,11 @@ builder.Services.AddSingleton<ReclaimEventHandler>();
 // (to the baggage-events topic) when the same "messaging" connection exists.
 builder.Services.Configure<BaggageOptions>(builder.Configuration.GetSection(BaggageOptions.SectionName));
 builder.Services.AddSingleton(TimeProvider.System);
+// Outbox (ADR-0017), registered before the processors so it stops after them and drains last: baggage events are stored with the hall change and sent from here, so a failed send is retried.
+builder.Services.Configure<OutboxOptions>(builder.Configuration.GetSection(OutboxOptions.SectionName));
+builder.Services.AddSingleton<OutboxDispatcher>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<OutboxDispatcher>());
+
 if (!string.IsNullOrWhiteSpace(builder.Configuration.GetConnectionString(FlightEventsOptions.ConnectionName)))
 {
     builder.AddAzureServiceBusClient(FlightEventsOptions.ConnectionName);
@@ -35,11 +40,6 @@ else
 {
     builder.Services.AddSingleton<IBaggageEventPublisher, NoOpBaggageEventPublisher>();
 }
-
-// Outbox (ADR-0017): baggage events are stored with the hall change and sent from here, so a failed send is retried.
-builder.Services.Configure<OutboxOptions>(builder.Configuration.GetSection(OutboxOptions.SectionName));
-builder.Services.AddSingleton<OutboxDispatcher>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<OutboxDispatcher>());
 
 if (builder.Configuration.GetValue(BaggageOptions.SectionName + ":" + nameof(BaggageOptions.SimulateUnloading), true))
 {
