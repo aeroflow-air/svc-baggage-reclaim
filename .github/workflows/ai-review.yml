@@ -1,0 +1,23 @@
+# Pilot: advisory AI code review. Thin caller — real work lives in aeroflow-workflows.
+# Pin a release tag, never @main. Secrets passed explicitly (no `secrets: inherit`).
+# Fork PRs, drafts and PRs labelled `skip-ai-review` are skipped.
+
+name: AI review
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, ready_for_review, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  ai-review:
+    uses: aeroflow-air/aeroflow-workflows/.github/workflows/ai-code-review.yml@v0.3.1
+    secrets:
+      anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+    permissions:
+      contents: read
+      pull-requests: write
+      id-token: write
