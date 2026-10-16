@@ -47,4 +47,26 @@ public static class ReclaimQueries
         _ when !reclaim.Bags.Any(b => b.Status is BagStatus.Unloaded or BagStatus.Delayed) => ReclaimStage.LastBag,
         _ => ReclaimStage.OnBelt,
     };
+
+    /// <summary>One belt with its non-cancelled reclaims, or <see cref="BeltNotFound"/>.</summary>
+    public static Result<BeltView> Belt(ReclaimHall hall, BeltId belt) =>
+        Belts(hall).FirstOrNone(view => view.Belt.Id == belt).ToResult(() => new BeltNotFound(belt));
+
+    /// <summary>A flight's reclaim in any status (cancelled included), or <see cref="ReclaimNotFound"/>.</summary>
+    public static Result<FlightReclaim> Reclaim(ReclaimHall hall, FlightId flight) =>
+        hall.ReclaimFor(flight).ToResult(() => new ReclaimNotFound(flight));
+
+    /// <summary>
+    /// The bag with this tag and the reclaim it belongs to, or <see cref="BagNotFound"/>. Tags wrap after a million
+    /// bags per airline, so if two reclaims hold the same tag the most recently landed one wins.
+    /// </summary>
+    public static Result<BagLocation> Bag(ReclaimHall hall, BagTag tag) =>
+        hall.Reclaims.Values
+            .OrderByDescending(r => r.LandedAt)
+            .SelectMany(r => r.Bags.Where(b => b.Tag == tag).Select(b => new BagLocation(b, r)))
+            .FirstOrNone()
+            .ToResult(() => new BagNotFound(tag));
 }
+
+/// <summary>A bag and the reclaim (belt and flight) it is on.</summary>
+public sealed record BagLocation(Bag Bag, FlightReclaim Reclaim);

@@ -1,5 +1,8 @@
 using AeroFlow.BaggageReclaim.Messaging;
 using AeroFlow.BaggageReclaim.Storage;
+using System.Reflection;
+using Microsoft.OpenApi;
+using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,7 +15,29 @@ builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
 
-// One in-memory reclaim hall shared by the event listener and the read API (GET /belts; rest of the API is #69).
+// API docs: Swashbuckle generates the OpenAPI document at /openapi/v1.json and Scalar renders it at /scalar
+// (same as svc-flight-status). Gated by ApiDocs:Enabled: true in appsettings.Development.json, off by default.
+var apiDocsEnabled = builder.Configuration.GetValue("ApiDocs:Enabled", false);
+if (apiDocsEnabled)
+{
+    builder.Services.AddEndpointsApiExplorer();
+    builder.Services.AddSwaggerGen(options =>
+    {
+        options.SwaggerDoc("v1", new OpenApiInfo
+        {
+            Title = "AeroFlow Baggage Reclaim API",
+            Version = "v1",
+            Description = "Read-only view of the LHR reclaim hall: belts, each arriving flight's reclaim, and single bags.",
+        });
+        var xml = Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml");
+        if (File.Exists(xml))
+        {
+            options.IncludeXmlComments(xml);
+        }
+    });
+}
+
+// One in-memory reclaim hall shared by the event listener and the read API (read-only API, platform-handbook#69).
 builder.Services.AddSingleton<IReclaimHallStore>(_ => new InMemoryReclaimHallStore(DefaultReclaimHall.Create()));
 
 // Flight events (platform-handbook#67): react to the simulator on the flight-events topic. Only wired when a
@@ -75,6 +100,12 @@ if (!app.Environment.IsDevelopment())
 
 app.MapHealthChecks("/health");
 app.MapControllers();
+
+if (apiDocsEnabled)
+{
+    app.UseSwagger(options => options.RouteTemplate = "openapi/{documentName}.json");
+    app.MapScalarApiReference(options => options.WithTitle("AeroFlow Baggage Reclaim API"));
+}
 
 app.Run();
 

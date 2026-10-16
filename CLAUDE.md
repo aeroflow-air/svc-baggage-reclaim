@@ -23,7 +23,7 @@ The checklist is [C# coding standards](https://github.com/aeroflow-air/platform-
 
 - `src/AeroFlow.BaggageReclaim/Domain`: pure core. `ReclaimPlanner` (pure rules, no I/O, no clock) and `UnloadingSimulator` (one tick in, new hall and events out), `ReclaimQueries` (pure read projections); `Reclaim`, `ReclaimCommand`, `BaggageEvent`, `Identifiers`, `Errors.cs`, `Result`, `Option`.
 - `Messaging/`: `FlightEventsProcessor` → `ReclaimEventHandler`; `UnloadingWorker` drives ticks with `TimeProvider`; `OutboxDispatcher` → `ServiceBusBaggageEventPublisher`.
-- `Controllers/` + `Models/`: read-only HTTP edge (`GET /belts` via `ReclaimQueries`); the rest of the API is platform-handbook#69.
+- `Controllers/` + `Models/`: read-only HTTP edge via `ReclaimQueries` (`GET /belts`, `/belts/{id}`, `/flights/{flightId}/reclaim`, `/bags/{bagTag}`); domain errors become ProblemDetails through `ProblemResults.Problem` (400 / 404 / 409 plus `code`). OpenAPI + Scalar behind `ApiDocs:Enabled`. `POST /flights/{flightId}/reclaim/complete` waits for Keycloak auth.
 - `Storage/`: `IReclaimHallStore`, in-memory implementation.
 
 ## Events

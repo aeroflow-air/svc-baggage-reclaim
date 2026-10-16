@@ -60,6 +60,57 @@ public sealed class ReclaimQueriesTests
         Assert.Equal(ReclaimStage.Assigned, ReclaimQueries.Stage(Reclaim(hall)));
     }
 
+    [Fact]
+    public void Belt_returns_one_belt_with_its_reclaims()
+    {
+        var hall = Apply(Hall(), Assign("SIM-1", "BA1", Landed));
+
+        var view = Ok(ReclaimQueries.Belt(hall, Ok(BeltId.Parse("1"))));
+
+        Assert.Equal("SIM-1", Assert.Single(view.Reclaims).Flight.Value);
+    }
+
+    [Fact]
+    public void Belt_that_does_not_exist_is_not_found()
+    {
+        var error = Fail(ReclaimQueries.Belt(Hall(), Ok(BeltId.Parse("9"))));
+
+        Assert.Equal("belt_not_found", Assert.IsType<BeltNotFound>(error).Code);
+    }
+
+    [Fact]
+    public void Reclaim_returns_cancelled_reclaims_too()
+    {
+        var hall = Apply(Hall(), Assign("SIM-1", "BA1", Landed), new CancelReclaim(Id("SIM-1"), "diverted"));
+
+        var reclaim = Ok(ReclaimQueries.Reclaim(hall, Id("SIM-1")));
+
+        Assert.IsType<ReclaimStatus.Cancelled>(reclaim.Status);
+    }
+
+    [Fact]
+    public void Reclaim_for_unknown_flight_is_not_found()
+    {
+        Assert.IsType<ReclaimNotFound>(Fail(ReclaimQueries.Reclaim(Hall(), Id("SIM-404"))));
+    }
+
+    [Fact]
+    public void Bag_finds_the_bag_and_its_reclaim()
+    {
+        var hall = Apply(Hall(), Assign("SIM-1", "BA1", Landed), Assign("SIM-2", "BA2", Landed.AddMinutes(1)));
+        var tag = Reclaim(hall).Bags[1].Tag;
+
+        var location = Ok(ReclaimQueries.Bag(hall, tag));
+
+        Assert.Equal((tag, "SIM-1"), (location.Bag.Tag, location.Reclaim.Flight.Value));
+    }
+
+    [Fact]
+    public void Bag_with_unknown_tag_is_not_found()
+    {
+        Assert.IsType<BagNotFound>(Fail(ReclaimQueries.Bag(Hall(), Tag("BA999999"))));
+    }
+
     private static ReclaimHall Hall() =>
         Ok(ReclaimHall.Create([new Belt(Ok(BeltId.Parse("1")), 2), new Belt(Ok(BeltId.Parse("2")), 2)]));
 
@@ -77,4 +128,6 @@ public sealed class ReclaimQueriesTests
     private static BagTag Tag(string tag) => Ok(BagTag.Parse(tag));
 
     private static T Ok<T>(Result<T> result) => Assert.IsType<Result<T>.Ok>(result).Value;
+
+    private static Error Fail<T>(Result<T> result) => Assert.IsType<Result<T>.Failure>(result).Error;
 }

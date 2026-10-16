@@ -3,10 +3,16 @@
   <PropertyGroup>
     <RootNamespace>AeroFlow.BaggageReclaim</RootNamespace>
     <AssemblyName>AeroFlow.BaggageReclaim</AssemblyName>
+    <!-- XML docs feed the OpenAPI descriptions; undocumented public members (domain types) aren't errors. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);1591</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Aspire.Azure.Messaging.ServiceBus" Version="9.5.2" />
+    <PackageReference Include="Scalar.AspNetCore" Version="2.17.14" />
+    <PackageReference Include="Swashbuckle.AspNetCore.Swagger" Version="10.3.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore.SwaggerGen" Version="10.3.0" />
   </ItemGroup>
 
 </Project>
