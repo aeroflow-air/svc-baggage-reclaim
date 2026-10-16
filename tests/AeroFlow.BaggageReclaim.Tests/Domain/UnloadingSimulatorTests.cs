@@ -59,7 +59,7 @@ public sealed class UnloadingSimulatorTests
     public void Delayed_bags_are_reported_and_end_up_missing()
     {
         var settings = Settings with { DelayedBagProbability = 1 };
-        var step = UnloadingSimulator.Tick(Hall(bags: 2), Landed.AddSeconds(10), settings, () => 0.0, Guid.NewGuid);
+        var step = UnloadingSimulator.Tick(Hall(bags: 2), Landed.AddSeconds(10), settings, () => 0.0);
 
         Assert.Equal(
             [BaggageEventType.BagDelayed, BaggageEventType.BagDelayed, BaggageEventType.ReclaimComplete],
@@ -84,8 +84,20 @@ public sealed class UnloadingSimulatorTests
         Assert.Empty(Tick(hall, Landed.AddMinutes(1)).Events);
     }
 
-    private static UnloadingStep Tick(ReclaimHall hall, DateTimeOffset now) =>
-        UnloadingSimulator.Tick(hall, now, Settings, () => 0.5, Guid.NewGuid);
+    [Fact]
+    public void Tick_event_ids_are_deterministic_and_distinct()
+    {
+        var settings = Settings with { DelayedBagProbability = 1 };
+
+        var first = UnloadingSimulator.Tick(Hall(bags: 2), Landed.AddSeconds(10), settings, () => 0.0);
+        var again = UnloadingSimulator.Tick(Hall(bags: 2), Landed.AddSeconds(10), settings, () => 0.0);
+
+        Assert.Equal(first.Events.Select(e => e.EventId), again.Events.Select(e => e.EventId));
+        Assert.Equal(first.Events.Count, first.Events.Select(e => e.EventId).Distinct().Count());
+    }
+
+    private static HallChange Tick(ReclaimHall hall, DateTimeOffset now) =>
+        UnloadingSimulator.Tick(hall, now, Settings, () => 0.5);
 
     private static ReclaimHall Hall(int bags)
     {

@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using AeroFlow.BaggageReclaim.Domain;
 using AeroFlow.BaggageReclaim.Storage;
 using Microsoft.Extensions.Options;
@@ -69,24 +70,26 @@ public sealed class ReclaimEventHandler(IReclaimHallStore store, IOptions<Flight
             _ => new CancelReclaim(flightId, evt.Reason ?? "cancelled"),
         };
 
-        return store.Update(hall => hall.HasProcessed(evt.EventId)
-                ? hall
-                : ReclaimPlanner.Apply(hall, command).Map(next => next.MarkProcessed(evt.EventId)))
+        // The change, the processed id and (for Landed) BeltAssigned are saved in one atomic update: the event sits
+        // in the outbox until OutboxDispatcher sends it, so a failed send is retried rather than lost (ADR-0017).
+        return store.UpdateWithEvents(hall => hall.HasProcessed(evt.EventId)
+                ? new HallChange(hall, [])
+                : ReclaimPlanner.Apply(hall, command).Map(next => new HallChange(
+                    next.MarkProcessed(evt.EventId),
+                    evt.EventType == FlightEventType.Landed ? BeltAssigned(next, flightId, evt) : [])))
             .Match<HandleOutcome>(
                 _ => new HandleOutcome.Applied(command.Name),
                 error => new HandleOutcome.Rejected(error));
     }
 
     /// <summary>
-    /// The <c>BeltAssigned</c> event for a <c>Landed</c> event that was applied, or <c>None</c>. Its id is the flight
-    /// event's id so a retry after a failed send publishes the same message id (Service Bus can de-duplicate).
+    /// The <c>BeltAssigned</c> event for an applied <c>Landed</c>. Its id is derived from the flight event's id
+    /// (not equal to it, so it never collides with the <c>Landed</c> event in a consumer's seen-ids set).
     /// </summary>
-    public Option<BaggageEvent> BeltAssignedFor(FlightEventMessage evt) =>
-        evt.EventType != FlightEventType.Landed
-            ? Option.None<BaggageEvent>()
-            : FlightId.Parse(evt.FlightId).Match(
-                id => store.Current().ReclaimFor(id).Map(r => BaggageEvent.For(r, BaggageEventType.BeltAssigned, evt.OccurredAt, evt.EventId)),
-                _ => Option.None<BaggageEvent>());
+    private static ImmutableList<BaggageEvent> BeltAssigned(ReclaimHall hall, FlightId flight, FlightEventMessage evt) =>
+        hall.ReclaimFor(flight).Match(
+            r => ImmutableList.Create(BaggageEvent.For(r, BaggageEventType.BeltAssigned, evt.OccurredAt, BaggageEvent.CausedBy(evt.EventId, BaggageEventType.BeltAssigned))),
+            () => ImmutableList<BaggageEvent>.Empty);
 
     /// <summary>Stable per flight (FNV-1a, not string.GetHashCode, which changes per process).</summary>
     private int BagCount(FlightId flight)

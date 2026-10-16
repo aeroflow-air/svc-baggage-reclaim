@@ -4,10 +4,13 @@ using Microsoft.Extensions.Options;
 
 namespace AeroFlow.BaggageReclaim.Messaging;
 
-/// <summary>Runs <see cref="UnloadingSimulator"/> on a timer and publishes what each tick produced.</summary>
+/// <summary>
+/// Runs <see cref="UnloadingSimulator"/> on a timer. Each tick's events go into the outbox in the same atomic update
+/// as the hall, and <see cref="OutboxDispatcher"/> sends them (ADR-0017).
+/// </summary>
 public sealed partial class UnloadingWorker(
     IReclaimHallStore store,
-    IBaggageEventPublisher publisher,
+    OutboxDispatcher outbox,
     IOptions<BaggageOptions> options,
     TimeProvider clock,
     ILogger<UnloadingWorker> logger) : BackgroundService
@@ -15,22 +18,16 @@ public sealed partial class UnloadingWorker(
     private readonly ILogger _logger = logger;
     private readonly Random _random = options.Value.Seed is { } seed ? new Random(seed) : new Random();
 
-    /// <summary>One tick: advance the hall atomically, then publish. Public so tests can drive it without a timer.</summary>
-    public async Task<IReadOnlyList<BaggageEvent>> TickAsync(CancellationToken cancellationToken)
+    /// <summary>One tick: advance the hall and queue its events atomically, then wake the dispatcher. Public for tests.</summary>
+    public IReadOnlyList<BaggageEvent> Tick()
     {
         var settings = options.Value.ToSettings();
         var now = clock.GetUtcNow();
-        UnloadingStep? step = null;
-        store.Update(hall =>
-        {
-            step = UnloadingSimulator.Tick(hall, now, settings, _random.NextDouble, Guid.NewGuid);
-            return step.Hall;
-        });
-
-        var events = step?.Events ?? [];
+        var events = store.UpdateWithEvents(hall => (Result<HallChange>)UnloadingSimulator.Tick(hall, now, settings, _random.NextDouble))
+            .Match(step => step.Events, _ => []);
         if (events.Count > 0)
         {
-            await publisher.PublishAsync(events, cancellationToken);
+            outbox.Notify();
         }
 
         return events;
@@ -43,7 +40,7 @@ public sealed partial class UnloadingWorker(
         {
             try
             {
-                await TickAsync(stoppingToken);
+                Tick();
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {

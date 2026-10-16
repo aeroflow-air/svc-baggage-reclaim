@@ -22,17 +22,17 @@ The checklist is [C# coding standards](https://github.com/aeroflow-air/platform-
 ## Where things live
 
 - `src/AeroFlow.BaggageReclaim/Domain`: pure core. `ReclaimPlanner` (pure rules, no I/O, no clock) and `UnloadingSimulator` (one tick in, new hall and events out), `ReclaimQueries` (pure read projections); `Reclaim`, `ReclaimCommand`, `BaggageEvent`, `Identifiers`, `Errors.cs`, `Result`, `Option`.
-- `Messaging/`: `FlightEventsProcessor` → `ReclaimEventHandler`; `UnloadingWorker` drives ticks with `TimeProvider`; `ServiceBusBaggageEventPublisher`.
+- `Messaging/`: `FlightEventsProcessor` → `ReclaimEventHandler`; `UnloadingWorker` drives ticks with `TimeProvider`; `OutboxDispatcher` → `ServiceBusBaggageEventPublisher`.
 - `Controllers/` + `Models/`: read-only HTTP edge (`GET /belts` via `ReclaimQueries`); the rest of the API is platform-handbook#69.
 - `Storage/`: `IReclaimHallStore`, in-memory implementation.
 
 ## Events
 
 - Subscribes to `flight-events` (owned by the flight simulator). Never publish to it.
-- Publishes only to its own topic, **`baggage-events`**, through `IBaggageEventPublisher` (MessageId = event id, Subject = event type, CorrelationId = flight id).
+- Publishes only to its own topic, **`baggage-events`**, through the **outbox** ([ADR-0017](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0017-reliable-event-publishing.md)): the handler and `UnloadingWorker` save each hall change and its events in one `IReclaimHallStore.UpdateWithEvents`, and `OutboxDispatcher` sends them via `IBaggageEventPublisher` (MessageId = event id, Subject = event type, CorrelationId = flight id). Never call the publisher directly.
+- Event ids are **deterministic**: `BaggageEvent.CausedBy(flightEventId, type)` for events caused by a flight event, `BaggageEvent.TickId(...)` for tick events. Never use `Guid.NewGuid` for an event id. Delivery is at least once.
 - Handlers must be **idempotent**: Service Bus can redeliver, so applying the same event twice must not change the hall twice. Applied `EventId`s are remembered in the hall in the same atomic update as the change, so a redelivery is `Ignored`; keep that for new handlers.
 - Late or out-of-order events of a known type return an `Ignored` / `Rejected` outcome with a reason; don't throw for them. An **unknown `FlightEventType`** value is different: it fails JSON deserialisation and `FlightEventsProcessor` dead-letters it as `unreadable`. Adding an event type to `flight-events` therefore needs this service updated first.
-- **Known gap, don't copy it:** publishing is at most once. The hall is updated before events are sent. If sending `BeltAssigned` fails, the redelivered `Landed` is `Ignored` as already applied and the event is never re-sent, even though its id is deterministic (the flight event's id). If a tick's publish fails (`UnloadingWorker`), the hall has already moved on and those events, which have random `Guid.NewGuid` ids, are lost (see `docs/service.md`). The fix (outbox or deterministic ids) is tracked in [platform-handbook#84](https://github.com/aeroflow-air/platform-handbook/issues/84); new publishing code should follow that, not this pattern.
 
 ## Tests and docs
 
