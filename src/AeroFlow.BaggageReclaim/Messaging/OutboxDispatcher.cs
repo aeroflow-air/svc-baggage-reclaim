@@ -29,6 +29,7 @@ public sealed partial class OutboxDispatcher(
 {
     private readonly ILogger _logger = logger;
     private readonly SemaphoreSlim _draining = new(1, 1);
+    private Guid _reportedPermanent;
     private readonly Channel<bool> _wake = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
     {
         FullMode = BoundedChannelFullMode.DropWrite,
@@ -101,15 +102,22 @@ public sealed partial class OutboxDispatcher(
             {
                 // Includes a publisher timeout (OperationCanceledException) that isn't a shutdown: never stop the host,
                 // or the in-memory outbox would be lost.
-                if (ex is ServiceBusException { IsTransient: false } permanent)
+                var reason = ex switch
                 {
-                    // Won't fix itself (too large, topic missing): holds back everything behind it.
-                    LogPermanentFailure(permanent, permanent.Reason.ToString(), store.Pending().Count);
-                }
-                else if (ex is UnauthorizedAccessException)
+                    ServiceBusException { IsTransient: false } sb => sb.Reason.ToString(),
+                    UnauthorizedAccessException => "Unauthorized", // rejected credentials aren't a ServiceBusException
+                    _ => null,
+                };
+                if (reason is not null)
                 {
-                    // Rejected credentials surface as this, not as a ServiceBusException.
-                    LogPermanentFailure(ex, "Unauthorized", store.Pending().Count);
+                    // Won't fix itself (too large, topic missing, unauthorised): holds back everything behind it.
+                    // Logged at error once per blocked head event so the signal isn't flooded every retry.
+                    var head = store.Pending() is [var first, ..] ? first.EventId : Guid.Empty;
+                    if (head != _reportedPermanent)
+                    {
+                        _reportedPermanent = head;
+                        LogPermanentFailure(ex, reason, store.Pending().Count);
+                    }
                 }
                 else
                 {

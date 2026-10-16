@@ -191,6 +191,44 @@ public sealed class BaggagePublishingTests
     }
 
     [Fact]
+    public void Derived_ids_are_pinned_so_renames_cannot_change_them()
+    {
+        var source = Guid.Parse("6f9619ff-8b86-d011-b42d-00c04fc964ff");
+
+        Assert.Equal(["BeltAssigned", "BagsOnBelt", "LastBagOnBelt", "ReclaimComplete", "BagDelayed"], Enum.GetNames<BaggageEventType>());
+        Assert.Equal(Guid.Parse("cf02cbb9-18d1-5a44-a077-e3d5ec9b8f9d"), BaggageEvent.CausedBy(source, BaggageEventType.BeltAssigned));
+    }
+
+    [Fact]
+    public async Task Permanent_failure_keeps_the_outbox_blocked_in_order_and_the_loop_running()
+    {
+        Handler().Handle(Landed());
+        var dispatcher = Dispatcher();
+        _publisher.Throw = new Azure.Messaging.ServiceBus.ServiceBusException("too big", Azure.Messaging.ServiceBus.ServiceBusFailureReason.MessageSizeExceeded);
+
+        await dispatcher.StartAsync(CancellationToken.None);
+        await WaitUntil(() => _publisher.Attempts >= 1);
+        await AdvanceUntil(() => _publisher.Attempts >= 3); // keeps retrying, doesn't stop
+
+        Assert.Single(_store.Pending());
+        _publisher.Throw = null;
+        await AdvanceUntil(() => _store.Pending().Count == 0);
+        await dispatcher.StopAsync(CancellationToken.None);
+        Assert.Single(_publisher.Published);
+    }
+
+    [Fact]
+    public async Task Drain_stops_when_the_head_was_already_acknowledged()
+    {
+        Handler().Handle(Landed());
+        Handler().Handle(Landed() with { FlightId = "SIM-00002", FlightNumber = "BA124" });
+        _publisher.BeforeSend = evt => _store.MarkPublished(evt); // a hypothetical second remover
+
+        Assert.Equal(0, await Dispatcher().DrainAsync(CancellationToken.None));
+        Assert.Equal(1, _publisher.Attempts);
+    }
+
+    [Fact]
     public void Derive_matches_the_rfc_uuid_v5_test_vector()
     {
         var dns = Guid.Parse("6ba7b810-9dad-11d1-80b4-00c04fd430c8");
@@ -260,11 +298,15 @@ public sealed class BaggagePublishingTests
         private readonly List<BaggageEvent> _sent = [];
         private bool _failNext;
         private bool _throwCancelled;
+        private Exception? _throw;
         private int _attempts;
 
         public bool FailNext { set { lock (_gate) { _failNext = value; } } }
 
         public bool ThrowCancelled { set { lock (_gate) { _throwCancelled = value; } } }
+
+        /// <summary>Thrown on every send until cleared.</summary>
+        public Exception? Throw { set { lock (_gate) { _throw = value; } } }
 
         /// <summary>Runs before each send; lets a test act as a second drainer.</summary>
         public Action<BaggageEvent>? BeforeSend { get; set; }
@@ -292,6 +334,11 @@ public sealed class BaggagePublishingTests
 
             lock (_gate)
             {
+                if (_throw is not null)
+                {
+                    throw _throw;
+                }
+
                 if (_throwCancelled)
                 {
                     _throwCancelled = false;
