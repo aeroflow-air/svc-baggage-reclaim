@@ -255,30 +255,58 @@ public sealed class BaggagePublishingTests
 
     private sealed class CapturingPublisher : IBaggageEventPublisher
     {
-        public bool FailNext { get; set; }
+        // Written on the dispatcher's thread and read by the test: everything goes through the lock.
+        private readonly object _gate = new();
+        private readonly List<BaggageEvent> _sent = [];
+        private bool _failNext;
+        private bool _throwCancelled;
+        private int _attempts;
 
-        public bool ThrowCancelled { get; set; }
+        public bool FailNext { set { lock (_gate) { _failNext = value; } } }
 
-        public int Attempts { get; private set; }
+        public bool ThrowCancelled { set { lock (_gate) { _throwCancelled = value; } } }
 
-        public List<BaggageEvent> Published { get; } = [];
+        /// <summary>Runs before each send; lets a test act as a second drainer.</summary>
+        public Action<BaggageEvent>? BeforeSend { get; set; }
+
+        public int Attempts => Volatile.Read(ref _attempts);
+
+        public IReadOnlyList<BaggageEvent> Published
+        {
+            get
+            {
+                lock (_gate)
+                {
+                    return [.. _sent];
+                }
+            }
+        }
 
         public Task PublishAsync(IReadOnlyCollection<BaggageEvent> events, CancellationToken cancellationToken)
         {
-            Attempts++;
-            if (ThrowCancelled)
+            Interlocked.Increment(ref _attempts);
+            foreach (var evt in events)
             {
-                ThrowCancelled = false;
-                throw new TaskCanceledException("send timed out");
+                BeforeSend?.Invoke(evt);
             }
 
-            if (FailNext)
+            lock (_gate)
             {
-                FailNext = false;
-                throw new InvalidOperationException("bus down");
+                if (_throwCancelled)
+                {
+                    _throwCancelled = false;
+                    throw new TaskCanceledException("send timed out");
+                }
+
+                if (_failNext)
+                {
+                    _failNext = false;
+                    throw new InvalidOperationException("bus down");
+                }
+
+                _sent.AddRange(events);
             }
 
-            Published.AddRange(events);
             return Task.CompletedTask;
         }
     }

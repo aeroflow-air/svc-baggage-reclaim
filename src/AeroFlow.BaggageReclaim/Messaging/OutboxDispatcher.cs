@@ -103,8 +103,13 @@ public sealed partial class OutboxDispatcher(
                 // or the in-memory outbox would be lost.
                 if (ex is ServiceBusException { IsTransient: false } permanent)
                 {
-                    // Won't fix itself (too large, unauthorised, topic missing): holds back everything behind it.
+                    // Won't fix itself (too large, topic missing): holds back everything behind it.
                     LogPermanentFailure(permanent, permanent.Reason.ToString(), store.Pending().Count);
+                }
+                else if (ex is UnauthorizedAccessException)
+                {
+                    // Rejected credentials surface as this, not as a ServiceBusException.
+                    LogPermanentFailure(ex, "Unauthorized", store.Pending().Count);
                 }
                 else
                 {
