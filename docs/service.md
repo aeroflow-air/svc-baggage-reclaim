@@ -8,7 +8,7 @@
 | Owner | AeroFlow platform (Tony Joanes) |
 | Status | prototype, local only |
 | Runs in | aeroflow-local AppHost resource `svc-baggage-reclaim`; Container Apps later (ADR-0007) |
-| Last reviewed | 2026-10-16 |
+| Last reviewed | 2026-10-17 |
 
 Written to the [service docs standard](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/standards/service-docs.md). The airport-wide picture is in the [airport overview](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/architecture/airport-overview.md). Plan: [platform-handbook#44](https://github.com/aeroflow-air/platform-handbook/issues/44).
 
@@ -16,7 +16,7 @@ Written to the [service docs standard](https://github.com/aeroflow-air/platform-
 
 Owns the **reclaim hall**: the belts, each arriving flight's reclaim (belt, bags and their state) and the `baggage-events` topic. It simulates unloading after landing and publishes each step.
 
-It does **not** handle departing bags, does not know real passenger numbers, and its HTTP API is read-only ([platform-handbook#69](https://github.com/aeroflow-air/platform-handbook/issues/69)); completing a reclaim over HTTP waits for Keycloak.
+It does **not** handle departing bags, does not know real passenger numbers, and its HTTP reads are anonymous; its one write — completing a reclaim — needs the `Ops.Reclaim.Write` role ([svc-baggage-reclaim#9](https://github.com/aeroflow-air/svc-baggage-reclaim/issues/9), [ADR-0018](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0018-entra-id-authentication-authorisation.md)).
 
 ## Design decisions
 
@@ -26,6 +26,7 @@ It does **not** handle departing bags, does not know real passenger numbers, and
 | Owns and publishes its own topic `baggage-events` | one owner per topic | [ADR-0013](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0013-central-event-bus.md) |
 | Idempotent by event id, stored in the same atomic update as the change (last 10,000) | at-least-once delivery must not assign two belts | `Messaging/ReclaimEventHandler.cs` |
 | Outbox in the store plus deterministic event ids | a failed publish is retried, never lost; re-sends carry the same id | [ADR-0017](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0017-reliable-event-publishing.md), `Domain/BaggageEvent.cs` |
+| Entra ID app roles, JWT validated per service; fake auth handler locally | writes are authorised without any Azure deployment or tenant | [ADR-0018](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0018-entra-id-authentication-authorisation.md), `Auth/` |
 | Least busy belt with room, ties to the first listed | spreads load | `Domain/ReclaimPlanner.cs` |
 | Stable bag count per flight (60-180) | the simulator sends no passenger numbers | `FlightEvents:Min/MaxBagsPerFlight` |
 | Publisher is a no-op without `messaging` | runs and tests without the bus | `Program.cs` |
@@ -54,10 +55,11 @@ flowchart LR
 | GET | `/belts` | every belt with its open and completed reclaims (stage `Assigned`, `OnBelt`, `LastBag`, `Complete`, bag counts); cancelled reclaims are left out. Read by the ops dashboard on startup ([platform-handbook#74](https://github.com/aeroflow-air/platform-handbook/issues/74)) | 200 |
 | GET | `/belts/{id}` | one belt, same shape as an item of `/belts` | 200, 400 `invalid_belt`, 404 `belt_not_found` |
 | GET | `/flights/{flightId}/reclaim` | a flight's reclaim in any status (`Unloading`, `Complete`, `Cancelled` with reason), stage, delay and every bag with its status | 200, 400 `invalid_flight_id`, 404 `reclaim_not_found` |
+| POST | `/flights/{flightId}/reclaim/complete` | complete a reclaim: close it, mark uncollected bags missing, publish `ReclaimComplete` via the outbox. Needs role `Ops.Reclaim.Write` (ADR-0018) | 200, 400 `invalid_flight_id`, 401, 403, 404 `reclaim_not_found`, 409 `reclaim_closed` |
 | GET | `/bags/{bagTag}` | one bag (case-insensitive tag) with its status, flight, belt and reclaim status; if a wrapped tag appears twice, the latest landing wins | 200, 400 `invalid_bag_tag`, 404 `bag_not_found` |
 | GET | `/scalar`, `/openapi/v1.json` | API docs, only when `ApiDocs:Enabled` (true in Development) | 200 |
 
-Errors are RFC 7807 ProblemDetails (`application/problem+json`) with `code` set to the domain error code and `instance` to the path. The API is read-only: `POST /flights/{flightId}/reclaim/complete` from [platform-handbook#69](https://github.com/aeroflow-air/platform-handbook/issues/69) needs a Keycloak role and waits for auth to exist.
+Errors are RFC 7807 ProblemDetails (`application/problem+json`) with `code` set to the domain error code and `instance` to the path. 401/403 from authorisation are the standard empty ASP.NET Core responses, not ProblemDetails.
 
 ### Events consumed
 
@@ -75,6 +77,8 @@ Contract: `Messaging/FlightEventMessage.cs`, a **local copy** of `AeroFlow.Local
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `ApiDocs:Enabled` | `false` (`true` in Development) | serve OpenAPI and Scalar |
+| `Auth:UseFake` | `false` (`true` in Development) | fake auth handler mints claims from an `Authorization: Fake <roles>` header; local/tests only, never in Production |
+| `AzureAd:Instance` / `TenantId` / `ClientId` | unset | Entra app registration for JWT bearer validation; when `ClientId` is unset and fake auth is off, protected endpoints fail closed with 401 |
 | `Outbox:RetrySeconds` | `5` | how often unsent baggage events are retried when nothing else wakes the dispatcher |
 | `ConnectionStrings:messaging` | unset | when unset: no processor, no-op publisher |
 | `FlightEvents:Topic` / `Subscription` | `flight-events` / `baggage-reclaim` | |
@@ -100,7 +104,7 @@ Topic `baggage-events`. Body `BaggageEvent` (JSON, web casing, nulls omitted): `
 | `BagsOnBelt` | first bag reaches the belt (~10 s after landing, plus any delay) | `bagCount` |
 | `BagDelayed` | a bag misses the flight (1%) | `bagTag`, `reason` |
 | `LastBagOnBelt` | hold empty | |
-| `ReclaimComplete` | belt empty; uncollected or delayed bags become missing | `bagCount`, `bagsCollected`, `bagsMissing` |
+| `ReclaimComplete` | belt empty, or an authorised `POST .../reclaim/complete` (same deterministic event id either way); uncollected or delayed bags become missing | `bagCount`, `bagsCollected`, `bagsMissing` |
 
 A 120-bag flight goes from `Landed` to `ReclaimComplete` in about 35 seconds. Today only the `ops-dashboard` subscription exists, and nothing reads it yet (#53).
 
@@ -114,7 +118,7 @@ In-memory hall; logs `Published {EventType} for {FlightNumber} on belt {Belt}`.
 | --- | --- | --- |
 | Service Bus (`messaging`), `flight-events` / `baggage-reclaim`, topic `baggage-events` | consuming and publishing | no processing; publisher is a no-op |
 | flight-simulator | `Landed` events for LHR arrivals | hall stays empty |
-| Keycloak (`identity`) | referenced by the AppHost | not used |
+| Microsoft Entra ID | JWT validation for write endpoints, only when `AzureAd:ClientId` is set | reads still work; writes return 401. Locally replaced by the fake auth handler (`Auth:UseFake`) |
 
 ## Failure modes
 
@@ -136,12 +140,12 @@ In-memory hall; logs `Published {EventType} for {FlightNumber} on belt {Belt}`.
 
 - Standalone: `dotnet run --project src/AeroFlow.BaggageReclaim`, then `curl http://localhost:8080/health`. Nothing else happens without the bus.
 - With the airport: clone next to `aeroflow-local` (the AppHost will not build otherwise) and run its AppHost. Healthy logs after an LHR landing: `AssignBelt for U21234 after Landed`, `Published BeltAssigned ...`, then `BagsOnBelt`, `LastBagOnBelt`, `ReclaimComplete` over ~30 s. Use `Baggage__TickSeconds=1` to speed up.
-- Tests: `dotnet test` covers the planner, unloading simulator, event handler (including idempotency), deterministic ids, the outbox (failed publish, retry, ordering), publishing, the read API (including ProblemDetails errors and the OpenAPI document) and health.
+- Tests: `dotnet test` covers the planner, unloading simulator, event handler (including idempotency), deterministic ids, the outbox (failed publish, retry, ordering), publishing, the read API and the reclaim-complete endpoint (authorised, 401 and 403 cases, ProblemDetails errors, the outbox event, and the OpenAPI document) and health.
 
 ## Known gaps
 
-- No HTTP way to complete a reclaim (needs Keycloak, [#69](https://github.com/aeroflow-air/platform-handbook/issues/69)); no reader for `baggage-events` ([#53](https://github.com/aeroflow-air/platform-handbook/issues/53)).
+- No reader for `baggage-events` ([#53](https://github.com/aeroflow-air/platform-handbook/issues/53)). Reads are still anonymous — gating them with Entra roles is undecided (ADR-0018).
 - Event contracts are local copies, and `BaggageEvent` lives only here ([#71](https://github.com/aeroflow-air/platform-handbook/issues/71)).
 - `workload.yaml` cannot declare the subscription or the topic ([#64](https://github.com/aeroflow-air/platform-handbook/issues/64)).
-- In-memory state (hall and outbox); no authentication.
+- In-memory state (hall and outbox); authentication is Entra ID in production shape but no tenant exists yet, so only the fake handler has run (ADR-0018).
 - The outbox has no size limit and no poison handling: an event that can never be sent (for example too large) holds back everything behind it, and a long outage grows memory. Acceptable for the demo; tracked in [platform-handbook#108](https://github.com/aeroflow-air/platform-handbook/issues/108).
