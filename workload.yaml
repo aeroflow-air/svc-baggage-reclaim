@@ -1,11 +1,17 @@
 # Paved-road infrastructure request (ADR-0009). This is not a deployment.
 # The workload schema lives in aeroflow-workflows, versioned with its tags.
 #
-# Requests one container app and nothing else. The hosting module
-# (container-app-service, ADR-0007) is not published, so this file does not
-# pin br/platform. Service Bus topic access (subscribe flight-events, later
-# publish baggage-events) is not expressible yet; see platform-handbook#64/#71.
+# Requests one container app plus Service Bus event wiring (ADR-0019):
+# publish to its own baggage-events topic, subscribe to flight-events on the
+# baggage-reclaim subscription. The hosting module (container-app-service,
+# ADR-0007) is not published, so this file does not pin br/platform; CI builds
+# against aeroflow-workflows' local stand-in.
 workload: svc-baggage-reclaim
 repo: svc-baggage-reclaim
 dataClass: internal
-capabilities: [http]
+capabilities: [http, queue]
+events:
+  publishes: [baggage-events]
+  subscribes:
+    - topic: flight-events
+      subscription: baggage-reclaim
