@@ -1,3 +1,4 @@
+using AeroFlow.BaggageReclaim.Auth;
 using AeroFlow.BaggageReclaim.Messaging;
 using AeroFlow.BaggageReclaim.Storage;
 using System.Reflection;
@@ -14,6 +15,7 @@ builder.Logging.AddConsole();
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();
+builder.Services.AddReclaimAuth(builder.Configuration);
 
 // API docs: Swashbuckle generates the OpenAPI document at /openapi/v1.json and Scalar renders it at /scalar
 // (same as svc-flight-status). Gated by ApiDocs:Enabled: true in appsettings.Development.json, off by default.
@@ -27,7 +29,7 @@ if (apiDocsEnabled)
         {
             Title = "AeroFlow Baggage Reclaim API",
             Version = "v1",
-            Description = "Read-only view of the LHR reclaim hall: belts, each arriving flight's reclaim, and single bags.",
+            Description = "The LHR reclaim hall: belts, each arriving flight's reclaim, and single bags. Reads are anonymous; completing a reclaim needs the Ops.Reclaim.Write role (ADR-0018).",
         });
         var xml = Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml");
         if (File.Exists(xml))
@@ -37,7 +39,7 @@ if (apiDocsEnabled)
     });
 }
 
-// One in-memory reclaim hall shared by the event listener and the read API (read-only API, platform-handbook#69).
+// One in-memory reclaim hall shared by the event listener and the HTTP API (platform-handbook#69, svc-baggage-reclaim#9).
 builder.Services.AddSingleton<IReclaimHallStore>(_ => new InMemoryReclaimHallStore(DefaultReclaimHall.Create()));
 
 // Flight events (platform-handbook#67): react to the simulator on the flight-events topic. Only wired when a
@@ -91,6 +93,8 @@ if (builder.Configuration.GetValue(BaggageOptions.SectionName + ":" + nameof(Bag
 var app = builder.Build();
 
 app.UseExceptionHandler();
+app.UseAuthentication();
+app.UseAuthorization();
 app.UseStatusCodePages();
 
 if (!app.Environment.IsDevelopment())

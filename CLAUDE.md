@@ -23,7 +23,7 @@ The checklist is [C# coding standards](https://github.com/aeroflow-air/platform-
 
 - `src/AeroFlow.BaggageReclaim/Domain`: pure core. `ReclaimPlanner` (pure rules, no I/O, no clock) and `UnloadingSimulator` (one tick in, new hall and events out), `ReclaimQueries` (pure read projections); `Reclaim`, `ReclaimCommand`, `BaggageEvent`, `Identifiers`, `Errors.cs`, `Result`, `Option`.
 - `Messaging/`: `FlightEventsProcessor` → `ReclaimEventHandler`; `UnloadingWorker` drives ticks with `TimeProvider`; `OutboxDispatcher` → `ServiceBusBaggageEventPublisher`.
-- `Controllers/` + `Models/`: read-only HTTP edge via `ReclaimQueries` (`GET /belts`, `/belts/{id}`, `/flights/{flightId}/reclaim`, `/bags/{bagTag}`); domain errors become ProblemDetails through `ProblemResults.Problem` (400 / 404 / 409 plus `code`). OpenAPI + Scalar behind `ApiDocs:Enabled`. `POST /flights/{flightId}/reclaim/complete` waits for Keycloak auth.
+- `Controllers/` + `Models/`: HTTP edge via `ReclaimQueries` (`GET /belts`, `/belts/{id}`, `/flights/{flightId}/reclaim`, `/bags/{bagTag}`); domain errors become ProblemDetails through `ProblemResults.Problem` (400 / 404 / 409 plus `code`). OpenAPI + Scalar behind `ApiDocs:Enabled`. `POST /flights/{flightId}/reclaim/complete` (svc-baggage-reclaim#9) applies `CompleteReclaim` + a `ReclaimComplete` outbox event in one `UpdateWithEvents`, and needs the `Ops.Reclaim.Write` policy (`Auth/`, ADR-0018): Entra JWT via Microsoft.Identity.Web when `AzureAd:ClientId` is set, fake handler (`Auth:UseFake`, Development/tests) minting the same claims locally. Authorisation stays at the edge; the domain never sees callers.
 - `Storage/`: `IReclaimHallStore`, in-memory implementation.
 
 ## Events
