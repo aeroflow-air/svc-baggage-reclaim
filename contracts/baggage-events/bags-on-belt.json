@@ -1,0 +1,9 @@
+{
+  "eventId": "33333333-3333-5333-8333-333333333302",
+  "eventType": "BagsOnBelt",
+  "flightId": "SIM-00002",
+  "flightNumber": "KL456",
+  "belt": "3",
+  "occurredAt": "2026-10-18T08:55:00+00:00",
+  "bagCount": 120
+}

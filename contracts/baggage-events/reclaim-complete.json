@@ -1,0 +1,11 @@
+{
+  "eventId": "33333333-3333-5333-8333-333333333304",
+  "eventType": "ReclaimComplete",
+  "flightId": "SIM-00002",
+  "flightNumber": "KL456",
+  "belt": "3",
+  "occurredAt": "2026-10-18T09:20:00+00:00",
+  "bagCount": 120,
+  "bagsCollected": 119,
+  "bagsMissing": 1
+}

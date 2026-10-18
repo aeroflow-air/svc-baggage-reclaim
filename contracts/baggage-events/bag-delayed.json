@@ -1,0 +1,10 @@
+{
+  "eventId": "33333333-3333-5333-8333-333333333305",
+  "eventType": "BagDelayed",
+  "flightId": "SIM-00002",
+  "flightNumber": "KL456",
+  "belt": "3",
+  "occurredAt": "2026-10-18T09:00:00+00:00",
+  "bagTag": "BA000123",
+  "reason": "not loaded at origin"
+}
