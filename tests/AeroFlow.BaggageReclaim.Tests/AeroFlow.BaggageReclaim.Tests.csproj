@@ -20,4 +20,8 @@
     <ProjectReference Include="..\..\src\AeroFlow.BaggageReclaim\AeroFlow.BaggageReclaim.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Contracts\flight-events\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
