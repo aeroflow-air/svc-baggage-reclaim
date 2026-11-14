@@ -2,9 +2,8 @@
 # Validates workload.yaml, generates the Bicep and runs bicep build + lint.
 # No Azure login, no what-if, no deployment.
 #
-# Pinned to aeroflow-workflows release v0.4.0 (aeroflow-workflows#11).
-# NOTE: this pin only resolves once Tony tags v0.4.0 on aeroflow-workflows
-# after merging aeroflow-workflows#11 — merge this PR after that tag exists.
+# Pinned to aeroflow-workflows release v0.5.0 (PSRule for Azure;
+# C# generator is opt-in and is not selected here — Python stays the default).
 
 name: Workload
 
@@ -19,8 +18,8 @@ permissions:
 
 jobs:
   workload:
-    uses: aeroflow-air/aeroflow-workflows/.github/workflows/workload-deploy.yml@v0.4.0
+    uses: aeroflow-air/aeroflow-workflows/.github/workflows/workload-deploy.yml@v0.5.0
     with:
-      workflows_ref: v0.4.0   # keep in sync with the uses: pin above
+      workflows_ref: v0.5.0   # keep in sync with the uses: pin above
     permissions:
       contents: read

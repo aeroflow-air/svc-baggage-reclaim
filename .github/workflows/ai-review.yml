@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   ai-review:
-    uses: aeroflow-air/aeroflow-workflows/.github/workflows/ai-code-review.yml@v0.3.1
+    uses: aeroflow-air/aeroflow-workflows/.github/workflows/ai-code-review.yml@v0.5.0
     secrets:
       anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
     permissions:
