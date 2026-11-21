@@ -138,15 +138,15 @@ public sealed partial class OutboxDispatcher(
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Publishing baggage events failed; {Pending} pending in the outbox, retrying in {RetrySeconds}s")]
+    [LoggerMessage(EventId = 10_007, Level = LogLevel.Warning, Message = "Publishing baggage events failed; {Pending} pending in the outbox, retrying in {RetrySeconds}s")]
     private partial void LogPublishFailed(Exception ex, int pending, double retrySeconds);
 
-    [LoggerMessage(Level = LogLevel.Error, Message = "Permanent failure publishing baggage events ({Reason}); {Pending} pending in the outbox are blocked behind it")]
+    [LoggerMessage(EventId = 10_008, Level = LogLevel.Error, Message = "Permanent failure publishing baggage events ({Reason}); {Pending} pending in the outbox are blocked behind it")]
     private partial void LogPermanentFailure(Exception ex, string reason, int pending);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Final drain of baggage events at shutdown failed")]
+    [LoggerMessage(EventId = 10_009, Level = LogLevel.Warning, Message = "Final drain of baggage events at shutdown failed")]
     private partial void LogShutdownDrainFailed(Exception ex);
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Stopping with {Pending} baggage events still in the outbox; they are lost with the in-memory state")]
+    [LoggerMessage(EventId = 10_010, Level = LogLevel.Warning, Message = "Stopping with {Pending} baggage events still in the outbox; they are lost with the in-memory state")]
     private partial void LogPendingAtShutdown(int pending);
 }

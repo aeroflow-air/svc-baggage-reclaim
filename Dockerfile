@@ -3,8 +3,10 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
+COPY nuget.config ./
 COPY Directory.Build.props ./
 COPY AeroFlow.BaggageReclaim.sln ./
+COPY lib/packages/ lib/packages/
 COPY src/AeroFlow.BaggageReclaim/AeroFlow.BaggageReclaim.csproj src/AeroFlow.BaggageReclaim/
 COPY tests/AeroFlow.BaggageReclaim.Tests/AeroFlow.BaggageReclaim.Tests.csproj tests/AeroFlow.BaggageReclaim.Tests/
 

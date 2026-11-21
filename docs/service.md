@@ -51,7 +51,8 @@ flowchart LR
 
 | Method | Route | Purpose | Responses |
 | --- | --- | --- | --- |
-| GET | `/health` | liveness | 200 |
+| GET | `/health` | readiness (and liveness) | 200 |
+| GET | `/alive` | liveness | 200 |
 | GET | `/belts` | every belt with its open and completed reclaims (stage `Assigned`, `OnBelt`, `LastBag`, `Complete`, bag counts); cancelled reclaims are left out. Read by the ops dashboard on startup ([platform-handbook#74](https://github.com/aeroflow-air/platform-handbook/issues/74)) | 200 |
 | GET | `/belts/{id}` | one belt, same shape as an item of `/belts` | 200, 400 `invalid_belt`, 404 `belt_not_found` |
 | GET | `/flights/{flightId}/reclaim` | a flight's reclaim in any status (`Unloading`, `Complete`, `Cancelled` with reason), stage, delay and every bag with its status | 200, 400 `invalid_flight_id`, 404 `reclaim_not_found` |
@@ -91,6 +92,49 @@ Contract: `Messaging/FlightEventMessage.cs`, a **local copy** of `AeroFlow.Local
 | `Baggage:BagsPerTick` / `CollectedPerTick` | 12 / 10 | |
 | `Baggage:DelayedBagProbability` | 0.01 | |
 | `Baggage:Seed` | random | fixed for repeatable runs |
+
+### Observability
+
+This service consumes `AeroFlow.ServiceDefaults` from a committed local package feed, pinned in [`lib/README.md`](../lib/README.md). Conventions are in [service-defaults.md](service-defaults.md). `Program` calls `AddServiceDefaults()` and `MapDefaultEndpoints()`, so `/health` and `/alive` are served in every environment. HTTP requests are logged automatically; Service Bus publish and consume paths emit platform events 2000–2003 via `IObservabilityLog`. W3C trace context on Service Bus messages is a later follow-up and is not wired here.
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| `Observability:ServiceName` | `svc-baggage-reclaim` | resource attribute `service.name` |
+| `Observability:ServiceVersion` | entry assembly informational version | `service.version` |
+| `Observability:Environment` | `local` | `deployment.environment` (falls back to the host environment if unset) |
+| `Observability:Squad` | `platform` | `aeroflow.squad` |
+
+#### Event catalogue
+
+**Platform** events (category `AeroFlow.ServiceDefaults`):
+
+| Event id | Name | Level | When |
+| --- | --- | --- | --- |
+| 1000 | HttpRequestCompleted | Information | Each HTTP request except `/health` and `/alive` |
+| 1001 | HttpRequestFailed | Warning | The request ended in a 5xx status |
+| 1002 | HttpRequestUnhandled | Error | An unhandled exception escaped the pipeline |
+| 2000 | MessagePublished | Information | A Service Bus message was sent |
+| 2001 | MessagePublishFailed | Error | Sending a Service Bus message failed |
+| 2002 | MessageConsumed | Information | A Service Bus message was handled (`applied`, `rejected`, `ignored`, or `dead-lettered`) |
+| 2003 | MessageConsumeFailed | Error | Handling a Service Bus message failed |
+| 3000 | OperationFailed | Error | An unexpected failure outside a single message (processor error, unloading tick) |
+
+**Business** events (this service, event ids at or above 10,000; domain code stays log-free):
+
+| Event id | Level | Message | When |
+| --- | --- | --- | --- |
+| 10000 | Information | `Listening for flight events on {Topic}/{Subscription}` | Processor started |
+| 10001 | Information | `{Command} for {FlightNumber} after {EventType}` | Flight event applied |
+| 10002 | Warning | `{EventType} for {FlightNumber} rejected: {Code} {Message}` | Business rejection |
+| 10003 | Debug | `{EventType} for {FlightNumber} ignored: {Reason}` | Idempotent / out-of-scope event |
+| 10004 | Warning | `Dead-lettered unreadable flight event {MessageId}` | Body could not be read |
+| 10005 | Warning | `Service Bus processor error ({Source})` | SDK processor error |
+| 10006 | Information | `Published {EventType} for {FlightNumber} on belt {Belt}` | Baggage event sent to `baggage-events` |
+| 10007 | Warning | `Publishing baggage events failed; {Pending} pending in the outbox, retrying in {RetrySeconds}s` | Transient publish failure |
+| 10008 | Error | `Permanent failure publishing baggage events ({Reason}); {Pending} pending in the outbox are blocked behind it` | Non-transient publish failure |
+| 10009 | Warning | `Final drain of baggage events at shutdown failed` | Last drain threw |
+| 10010 | Warning | `Stopping with {Pending} baggage events still in the outbox; they are lost with the in-memory state` | Unsent events at shutdown |
+| 10011 | Warning | `Baggage unloading tick failed; will retry next tick` | Unloading simulator tick threw |
 
 ## Outputs
 
@@ -140,7 +184,7 @@ In-memory hall; logs `Published {EventType} for {FlightNumber} on belt {Belt}`.
 
 - Standalone: `dotnet run --project src/AeroFlow.BaggageReclaim`, then `curl http://localhost:8080/health`. Nothing else happens without the bus.
 - With the airport: clone next to `aeroflow-local` (the AppHost will not build otherwise) and run its AppHost. Healthy logs after an LHR landing: `AssignBelt for U21234 after Landed`, `Published BeltAssigned ...`, then `BagsOnBelt`, `LastBagOnBelt`, `ReclaimComplete` over ~30 s. Use `Baggage__TickSeconds=1` to speed up.
-- Tests: `dotnet test` covers the planner, unloading simulator, event handler (including idempotency), deterministic ids, the outbox (failed publish, retry, ordering), publishing, the read API and the reclaim-complete endpoint (authorised, 401 and 403 cases, ProblemDetails errors, the outbox event, and the OpenAPI document) and health.
+- Tests: `dotnet test` covers the planner, unloading simulator, event handler (including idempotency), deterministic ids, the outbox (failed publish, retry, ordering), publishing, the read API and the reclaim-complete endpoint (authorised, 401 and 403 cases, ProblemDetails errors, the outbox event, and the OpenAPI document), health, `/alive`, and the observability contract.
 
 ## Known gaps
 

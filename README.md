@@ -11,7 +11,7 @@ dotnet run --project src/AeroFlow.BaggageReclaim
 dotnet test
 ```
 
-- Health: `GET /health`
+- Health: `GET /health` and `GET /alive`
 - Read API (platform-handbook#69): `GET /belts`, `GET /belts/{id}`, `GET /flights/{flightId}/reclaim`, `GET /bags/{bagTag}`. Errors are ProblemDetails with a `code` (400 malformed id, 404 not found).
 - API docs (Development, or `ApiDocs__Enabled=true`): Scalar at `/scalar`, OpenAPI at `/openapi/v1.json`.
 
