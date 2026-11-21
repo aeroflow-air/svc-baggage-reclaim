@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\AeroFlow.BaggageReclaim\AeroFlow.BaggageReclaim.csproj" />
+    <PackageReference Include="AeroFlow.ServiceDefaults.Testing" Version="0.1.0" />
   </ItemGroup>
 
   <ItemGroup>

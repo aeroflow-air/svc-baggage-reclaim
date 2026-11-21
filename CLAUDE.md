@@ -18,6 +18,7 @@ The checklist is [C# coding standards](https://github.com/aeroflow-air/platform-
   `DateTimeOffset.UtcNow`. Time comes from `TimeProvider` at the edge.
 - BCL only: the local `Result` / `Option` are deliberately small. No LanguageExt.
 - Edges: async all the way (no `.Result` / `.Wait()`), flow `CancellationToken`, `[LoggerMessage]` structured logging.
+- Observability comes from `AeroFlow.ServiceDefaults` via the local package feed in `lib/packages/` (see [`lib/README.md`](lib/README.md)): call `AddServiceDefaults()` and `MapDefaultEndpoints()`. The package logs HTTP requests, messaging and failures. Business events use `[LoggerMessage]` with event ids at or above 10,000. See [docs/service-defaults.md](docs/service-defaults.md).
 
 ## Where things live
 

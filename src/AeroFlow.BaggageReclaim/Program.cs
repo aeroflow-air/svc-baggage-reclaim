@@ -4,17 +4,14 @@ using AeroFlow.BaggageReclaim.Storage;
 using System.Reflection;
 using Microsoft.OpenApi;
 using Scalar.AspNetCore;
+using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Structured logging: use the host defaults (console JSON in containers when
-// configured via environment). Prefer composing here over a shared logging package.
-builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
+builder.AddServiceDefaults();
 
 builder.Services.AddControllers();
 builder.Services.AddProblemDetails();
-builder.Services.AddHealthChecks();
 builder.Services.AddReclaimAuth(builder.Configuration);
 
 // API docs: Swashbuckle generates the OpenAPI document at /openapi/v1.json and Scalar renders it at /scalar
@@ -73,23 +70,6 @@ if (builder.Configuration.GetValue(BaggageOptions.SectionName + ":" + nameof(Bag
     builder.Services.AddHostedService<UnloadingWorker>();
 }
 
-// ---------------------------------------------------------------------------
-// OpenTelemetry stub — enable when the squad wires an exporter (OTLP / App Insights).
-// Keep this commented until you have somewhere to send traces/metrics; no dead deps.
-//
-// builder.Services.AddOpenTelemetry()
-//     .WithTracing(t => t
-//         .AddAspNetCoreInstrumentation()
-//         .AddHttpClientInstrumentation()
-//         // .AddOtlpExporter()
-//     )
-//     .WithMetrics(m => m
-//         .AddAspNetCoreInstrumentation()
-//         .AddRuntimeInstrumentation()
-//         // .AddOtlpExporter()
-//     );
-// ---------------------------------------------------------------------------
-
 var app = builder.Build();
 
 app.UseExceptionHandler();
@@ -102,7 +82,7 @@ if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
 }
 
-app.MapHealthChecks("/health");
+app.MapDefaultEndpoints();
 app.MapControllers();
 
 if (apiDocsEnabled)

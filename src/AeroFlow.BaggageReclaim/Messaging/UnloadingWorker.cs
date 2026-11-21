@@ -1,3 +1,4 @@
+using AeroFlow.ServiceDefaults;
 using AeroFlow.BaggageReclaim.Domain;
 using AeroFlow.BaggageReclaim.Storage;
 using Microsoft.Extensions.Options;
@@ -13,7 +14,8 @@ public sealed partial class UnloadingWorker(
     OutboxDispatcher outbox,
     IOptions<BaggageOptions> options,
     TimeProvider clock,
-    ILogger<UnloadingWorker> logger) : BackgroundService
+    ILogger<UnloadingWorker> logger,
+    IObservabilityLog? observability = null) : BackgroundService
 {
     private readonly ILogger _logger = logger;
     private readonly Random _random = options.Value.Seed is { } seed ? new Random(seed) : new Random();
@@ -45,10 +47,11 @@ public sealed partial class UnloadingWorker(
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 LogTickFailed(ex);
+                observability?.OperationFailed("baggage-unloading-tick", ex, flightId: null);
             }
         }
     }
 
-    [LoggerMessage(Level = LogLevel.Warning, Message = "Baggage unloading tick failed; will retry next tick")]
+    [LoggerMessage(EventId = 10_011, Level = LogLevel.Warning, Message = "Baggage unloading tick failed; will retry next tick")]
     private partial void LogTickFailed(Exception ex);
 }
