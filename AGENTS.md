@@ -19,10 +19,11 @@ Assigns reclaim belts to landed flights at LHR and simulates bags through to col
   Review-only: `throw` (only `UnreachableException`), `null`, `Guid.NewGuid`/`Random`.
 - * `AddServiceDefaults()` + `MapDefaultEndpoints()`: OTel, request and messaging logs, `/health`, `/alive`
   (`HealthEndpointTests`, `ObservabilityContractTests`). Don't write your own HTTP or messaging log lines.
-- * `[LoggerMessage]` only (CA1848/CA2254 are build errors). Business event ids start at 10,000. `Console` isn't
-  banned here yet (no RS0030), but don't use it. No PII, secrets or bodies in logs.
+- * `[LoggerMessage]` only (CA1848/CA2254 are build errors). Never `Console`/`Debug.WriteLine` (RS0030, from
+  `AeroFlow.ServiceDefaults` 0.1.1). Business event ids start at 10,000. No PII, secrets or bodies in logs.
 - Options use `Configure<T>` with no startup validation yet; new options use `ValidateOnStart()`. Workflows pin
-  `aeroflow-workflows` tags (`v0.5.0`, `v0.7.0` for skills), never `@main`, with job `permissions`.
+  `aeroflow-workflows` tags (`dotnet-ci.yml@v0.7.0` with `github-packages: true` and `packages: read`; `v0.7.0`
+  for skills), never `@main`, with job `permissions`.
 
 ## Events (ADR-0013/0017/0019)
 - Consumes `flight-events` on subscription `baggage-reclaim` (never publish to it). Publishes only `baggage-events`,
