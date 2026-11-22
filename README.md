@@ -60,6 +60,32 @@ Events are only published when the `messaging` connection exists. Without it the
 
 Settings (`Baggage` section, e.g. `Baggage__TickSeconds=1`): `Topic` (`baggage-events`), `SimulateUnloading` (true), `TickSeconds` (2), `FirstBagAfterLandingSeconds` (10), `BagsPerTick` (12), `CollectedPerTick` (10), `DelayedBagProbability` (0.01) and `Seed` (random). With the defaults, a 120-bag flight goes from landing to `ReclaimComplete` in about 35 seconds.
 
+
+## NuGet feed (GitHub Packages)
+
+`AeroFlow.ServiceDefaults` 0.1.1 comes from `https://nuget.pkg.github.com/aeroflow-air/index.json`. GitHub Packages requires authentication even though the org and packages are public. Do not put a token in the committed `nuget.config`.
+
+Create a personal access token with the `read:packages` scope (a classic token, or a fine-grained token with read access to packages in `aeroflow-air`). This repository does not create or store that token. Add the source to your **user-level** NuGet config:
+
+```bash
+dotnet nuget add source https://nuget.pkg.github.com/aeroflow-air/index.json \
+  --name aeroflow-air \
+  --username YOUR_GITHUB_USERNAME \
+  --password YOUR_TOKEN \
+  --store-password-in-clear-text
+```
+
+If the source already exists, update the credentials instead of adding it twice. More detail is in the [lib-service-defaults consume guide](https://github.com/aeroflow-air/lib-service-defaults#consume).
+
+CI calls `aeroflow-workflows` `dotnet-ci.yml@v0.7.0` with `github-packages: true` and job permission `packages: read`.
+
+For container builds, pass the same token as a BuildKit secret (it is not written into an image layer):
+
+```bash
+export NUGET_AUTH_TOKEN=...   # PAT with read:packages; do not commit this
+docker build --secret id=nuget_auth_token,env=NUGET_AUTH_TOKEN -t <image> .
+```
+
 ## Container
 
 ```bash

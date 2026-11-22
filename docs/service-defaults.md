@@ -1,10 +1,8 @@
 # ServiceDefaults: logging conventions and event catalogue
 
-Status: the package lives in this repository at `src/AeroFlow.ServiceDefaults` (version 0.1.0). Design: [ADR-0022](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0022-observability-on-the-golden-path.md) and the [observability design page](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/design/observability.md).
+Status: this service PackageReferences [`AeroFlow.ServiceDefaults` 0.1.1](https://github.com/aeroflow-air/lib-service-defaults) from the org GitHub Packages feed. The canonical catalogue and release notes live in that repository. Design: [ADR-0022](https://github.com/aeroflow-air/platform-handbook/blob/main/docs/decisions/0022-observability-on-the-golden-path.md).
 
-This is the golden-path observability package, promoted from `AeroFlow.Local.ServiceDefaults` in aeroflow-local. There is no `lib-*` repo and no NuGet feed in the organisation yet, so the package is housed here — the place ADR-0014 already pointed to ("until published from the template"). The recommended long-term home is a new `lib-service-defaults` repository that publishes `AeroFlow.ServiceDefaults` and `AeroFlow.ServiceDefaults.Testing` to GitHub Packages. This record does not create that repo.
-
-The template service calls `AddServiceDefaults()` in `Program.cs`. Existing `svc-*` services are a later follow-up.
+CA1848, CA2254 and RS0030 (`System.Console`, `Debug.WriteLine`) are build errors because 0.1.1 flows `BannedApiAnalyzers` and the package props to consumers. 0.1.0 packed those props but did not restore the analyser.
 
 ## What the package emits
 
@@ -93,7 +91,7 @@ Exporters: set `OTEL_EXPORTER_OTLP_ENDPOINT` for the Aspire dashboard (local) an
 
 ## CI enforcement
 
-Projects that import `src/AeroFlow.ServiceDefaults/build/AeroFlow.ServiceDefaults.props` (this repository does, via `Directory.Build.props`; NuGet consumers get `buildTransitive`) treat as errors:
+Projects that PackageReference `AeroFlow.ServiceDefaults` 0.1.1 (or later) treat as errors, via the package's `buildTransitive` props and a flowing `BannedApiAnalyzers` dependency:
 
 - **CA1848** — use `[LoggerMessage]` rather than `ILogger.Log*` with a runtime template
 - **CA2254** — the message template must be a compile-time constant
@@ -110,6 +108,6 @@ host.Logs
     .RequireFlightId("AF204");
 ```
 
-## Versioning and publish
+## Versioning
 
-The package version is **0.1.0**, set in the project file. `dotnet pack src/AeroFlow.ServiceDefaults/AeroFlow.ServiceDefaults.csproj` produces the nupkg; nothing is published yet, because the organisation has no GitHub Packages (NuGet) workflow. When `lib-service-defaults` exists, versions should follow the same tagged-release habit as `aeroflow-workflows`.
+Versions are published from [lib-service-defaults](https://github.com/aeroflow-air/lib-service-defaults) by pushing a `vMAJOR.MINOR.PATCH` tag. This service pins **0.1.1**.

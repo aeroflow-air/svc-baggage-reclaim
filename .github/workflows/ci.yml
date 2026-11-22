@@ -14,11 +14,14 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   build-and-test:
-    uses: aeroflow-air/aeroflow-workflows/.github/workflows/dotnet-ci.yml@v0.5.0
+    uses: aeroflow-air/aeroflow-workflows/.github/workflows/dotnet-ci.yml@v0.7.0
     with:
       solution: AeroFlow.BaggageReclaim.sln
+      github-packages: true
     permissions:
       contents: read
+      packages: read

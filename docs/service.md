@@ -95,7 +95,7 @@ Contract: `Messaging/FlightEventMessage.cs`, a **local copy** of `AeroFlow.Local
 
 ### Observability
 
-This service consumes `AeroFlow.ServiceDefaults` from a committed local package feed, pinned in [`lib/README.md`](../lib/README.md). Conventions are in [service-defaults.md](service-defaults.md). `Program` calls `AddServiceDefaults()` and `MapDefaultEndpoints()`, so `/health` and `/alive` are served in every environment. HTTP requests are logged automatically; Service Bus publish and consume paths emit platform events 2000–2003 via `IObservabilityLog`. W3C trace context on Service Bus messages is a later follow-up and is not wired here.
+This service consumes `AeroFlow.ServiceDefaults` 0.1.1 from the org GitHub Packages feed (`https://nuget.pkg.github.com/aeroflow-air/index.json`; see the README for the local `read:packages` PAT). Conventions are in [service-defaults.md](service-defaults.md) and [lib-service-defaults](https://github.com/aeroflow-air/lib-service-defaults). `Program` calls `AddServiceDefaults()` and `MapDefaultEndpoints()`, so `/health` and `/alive` are served in every environment. HTTP requests are logged automatically; Service Bus publish and consume paths emit platform events 2000–2003 via `IObservabilityLog`. W3C trace context on Service Bus messages is a later follow-up and is not wired here.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
