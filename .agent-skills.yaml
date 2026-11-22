@@ -1,0 +1,7 @@
+# Agent skills pinned for this repo (ADR-0023). Synced into .claude/skills/ by
+# aeroflow-workflows sync-agent-skills.yml; see .github/workflows/agent-skills.yml.
+# Only .claude/skills/aeroflow-* is managed. Name your own skills without that prefix.
+source: aeroflow-air/agent-skills
+version: v0.2.0
+skills: default
+exclude: [aeroflow-new-service-checklist]   # for creating a service from the template; this one exists

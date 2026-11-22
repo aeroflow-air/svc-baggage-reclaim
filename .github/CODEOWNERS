@@ -1,0 +1,9 @@
+# Agent context is owned by the platform team (ADR-0023). Skills come from aeroflow-air/agent-skills via
+# .github/workflows/agent-skills.yml; change them there, not here. Squad skills (other names) are not listed,
+# so squads own them. Code owner review is only required if branch protection turns it on.
+# @tonyjoanes is listed until the Platform team has write access to this repo (GitHub ignores a team without it).
+/.claude/skills/aeroflow-*/   @aeroflow-air/platform @tonyjoanes
+/.agent-skills.yaml           @aeroflow-air/platform @tonyjoanes
+/AGENTS.md                    @aeroflow-air/platform @tonyjoanes
+/CLAUDE.md                    @aeroflow-air/platform @tonyjoanes
+/.github/CODEOWNERS           @aeroflow-air/platform @tonyjoanes
