@@ -2,6 +2,6 @@
 # aeroflow-workflows sync-agent-skills.yml; see .github/workflows/agent-skills.yml.
 # Only .claude/skills/aeroflow-* is managed. Name your own skills without that prefix.
 source: aeroflow-air/agent-skills
-version: v0.2.0
+version: v0.2.1
 skills: default
 exclude: [aeroflow-new-service-checklist]   # for creating a service from the template; this one exists
