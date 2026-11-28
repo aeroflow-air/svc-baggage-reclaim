@@ -60,6 +60,8 @@ flowchart LR
 | GET | `/bags/{bagTag}` | one bag (case-insensitive tag) with its status, flight, belt and reclaim status; if a wrapped tag appears twice, the latest landing wins | 200, 400 `invalid_bag_tag`, 404 `bag_not_found` |
 | GET | `/scalar`, `/openapi/v1.json` | API docs, only when `ApiDocs:Enabled` (true in Development) | 200 |
 
+A copy of the generated OpenAPI document is checked in at `openapi/svc-baggage-reclaim.json` (catalogued by Backstage, ADR-0024). `OpenApiExportTests` fails when it drifts from the code; regenerate with `UPDATE_OPENAPI=1 dotnet test --filter OpenApiExportTests`.
+
 Errors are RFC 7807 ProblemDetails (`application/problem+json`) with `code` set to the domain error code and `instance` to the path. 401/403 from authorisation are the standard empty ASP.NET Core responses, not ProblemDetails.
 
 ### Events consumed

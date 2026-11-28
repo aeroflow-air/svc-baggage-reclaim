@@ -1,0 +1,677 @@
+{
+  "openapi": "3.0.4",
+  "info": {
+    "title": "AeroFlow Baggage Reclaim API",
+    "description": "The LHR reclaim hall: belts, each arriving flight\u0027s reclaim, and single bags. Reads are anonymous; completing a reclaim needs the Ops.Reclaim.Write role (ADR-0018).",
+    "version": "v1"
+  },
+  "paths": {
+    "/belts": {
+      "get": {
+        "tags": [
+          "Belts"
+        ],
+        "summary": "Every belt with the flights on it, in hall order.",
+        "responses": {
+          "200": {
+            "description": "Every belt with its non-cancelled reclaims, earliest landing first.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BeltResponse"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BeltResponse"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BeltResponse"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/belts/{id}": {
+      "get": {
+        "tags": [
+          "Belts"
+        ],
+        "summary": "One belt with the flights on it.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Belt id, for example \u00603\u0060.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The belt with its non-cancelled reclaims, earliest landing first.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeltResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeltResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BeltResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The id is not a valid belt id.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No belt with that id.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flights/{flightId}/reclaim": {
+      "get": {
+        "tags": [
+          "Reclaim"
+        ],
+        "summary": "A flight\u0027s reclaim: its belt, status, stage and every bag.",
+        "description": "Cancelled and completed reclaims are returned too, with their status.",
+        "parameters": [
+          {
+            "name": "flightId",
+            "in": "path",
+            "description": "The simulator\u0027s flight id, for example \u0060SIM-00001\u0060.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The reclaim.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReclaimResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReclaimResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReclaimResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The flight id is malformed.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No reclaim for that flight (it has not landed here, or was never assigned a belt).",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/flights/{flightId}/reclaim/complete": {
+      "post": {
+        "tags": [
+          "Reclaim"
+        ],
+        "summary": "Complete a flight\u0027s reclaim: close it and mark every uncollected bag missing.",
+        "description": "Requires the \u0060Ops.Reclaim.Write\u0060 role (ADR-0018). Publishes \u0060ReclaimComplete\u0060 through the outbox (ADR-0017).",
+        "parameters": [
+          {
+            "name": "flightId",
+            "in": "path",
+            "description": "The simulator\u0027s flight id, for example \u0060SIM-00001\u0060.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The completed reclaim.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReclaimResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReclaimResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReclaimResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The flight id is malformed.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No caller identity.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller does not have the \u0060Ops.Reclaim.Write\u0060 role.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No reclaim for that flight.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The reclaim is already complete or cancelled.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bags/{bagTag}": {
+      "get": {
+        "tags": [
+          "Reclaim"
+        ],
+        "summary": "One bag by its tag, with its flight and belt.",
+        "parameters": [
+          {
+            "name": "bagTag",
+            "in": "path",
+            "description": "Bag tag: airline code and six digits, for example \u0060BA000123\u0060.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The bag.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/BagResponse"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BagResponse"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BagResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "The tag is malformed.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No bag with that tag.",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "BagResponse": {
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": "string",
+            "description": "Bag tag, for example \u0060BA000123\u0060.",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "description": "\u0060Unloaded\u0060, \u0060OnBelt\u0060, \u0060Collected\u0060, \u0060Delayed\u0060 or \u0060Missing\u0060.",
+            "nullable": true
+          },
+          "flightId": {
+            "type": "string",
+            "description": "Flight the bag arrived on.",
+            "nullable": true
+          },
+          "flightNumber": {
+            "type": "string",
+            "description": "Flight number.",
+            "nullable": true
+          },
+          "beltId": {
+            "type": "string",
+            "description": "Belt the bag goes to.",
+            "nullable": true
+          },
+          "reclaimStatus": {
+            "type": "string",
+            "description": "The flight\u0027s reclaim status: \u0060Unloading\u0060, \u0060Complete\u0060 or \u0060Cancelled\u0060.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "API shape for a single bag and where it is."
+      },
+      "BeltReclaimResponse": {
+        "type": "object",
+        "properties": {
+          "flightId": {
+            "type": "string",
+            "description": "The simulator\u0027s flight id, for example \u0060SIM-00001\u0060.",
+            "nullable": true
+          },
+          "flightNumber": {
+            "type": "string",
+            "description": "Flight number.",
+            "nullable": true
+          },
+          "origin": {
+            "type": "string",
+            "description": "IATA code the flight came from.",
+            "nullable": true
+          },
+          "landedAt": {
+            "type": "string",
+            "description": "When the flight landed (the belt was assigned then).",
+            "format": "date-time"
+          },
+          "stage": {
+            "type": "string",
+            "description": "\u0060Assigned\u0060, \u0060OnBelt\u0060, \u0060LastBag\u0060 or \u0060Complete\u0060.",
+            "nullable": true
+          },
+          "bagCount": {
+            "type": "integer",
+            "description": "Bags expected for the flight.",
+            "format": "int32"
+          },
+          "bagsOnBelt": {
+            "type": "integer",
+            "description": "Bags on the belt now.",
+            "format": "int32"
+          },
+          "bagsCollected": {
+            "type": "integer",
+            "description": "Bags collected so far.",
+            "format": "int32"
+          },
+          "bagsDelayed": {
+            "type": "integer",
+            "description": "Bags currently delayed.",
+            "format": "int32"
+          },
+          "completedAt": {
+            "type": "string",
+            "description": "When the belt cleared for this flight; null until then.",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One flight\u0027s reclaim on a belt."
+      },
+      "BeltResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Belt id, for example \u00603\u0060.",
+            "nullable": true
+          },
+          "capacity": {
+            "type": "integer",
+            "description": "How many flights the belt serves at once.",
+            "format": "int32"
+          },
+          "reclaims": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BeltReclaimResponse"
+            },
+            "description": "Non-cancelled reclaims on the belt, earliest landing first.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "API shape for a belt and the flights on it."
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "nullable": true
+          },
+          "title": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true
+          },
+          "instance": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "additionalProperties": {}
+      },
+      "ReclaimBagResponse": {
+        "type": "object",
+        "properties": {
+          "tag": {
+            "type": "string",
+            "description": "Bag tag, for example \u0060BA000123\u0060.",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "description": "\u0060Unloaded\u0060, \u0060OnBelt\u0060, \u0060Collected\u0060, \u0060Delayed\u0060 or \u0060Missing\u0060.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "One bag within a reclaim."
+      },
+      "ReclaimResponse": {
+        "type": "object",
+        "properties": {
+          "flightId": {
+            "type": "string",
+            "description": "The simulator\u0027s flight id, for example \u0060SIM-00001\u0060.",
+            "nullable": true
+          },
+          "flightNumber": {
+            "type": "string",
+            "description": "Flight number.",
+            "nullable": true
+          },
+          "origin": {
+            "type": "string",
+            "description": "IATA code the flight came from.",
+            "nullable": true
+          },
+          "beltId": {
+            "type": "string",
+            "description": "Belt the flight\u0027s bags go to.",
+            "nullable": true
+          },
+          "landedAt": {
+            "type": "string",
+            "description": "When the flight landed.",
+            "format": "date-time"
+          },
+          "status": {
+            "type": "string",
+            "description": "\u0060Unloading\u0060, \u0060Complete\u0060 or \u0060Cancelled\u0060.",
+            "nullable": true
+          },
+          "stage": {
+            "type": "string",
+            "description": "\u0060Assigned\u0060, \u0060OnBelt\u0060, \u0060LastBag\u0060 or \u0060Complete\u0060.",
+            "nullable": true
+          },
+          "delayMinutes": {
+            "type": "integer",
+            "description": "Delay recorded against the flight, in whole minutes.",
+            "format": "int32"
+          },
+          "completedAt": {
+            "type": "string",
+            "description": "When the belt cleared for this flight; null until then.",
+            "format": "date-time",
+            "nullable": true
+          },
+          "cancelReason": {
+            "type": "string",
+            "description": "Why the reclaim was cancelled; null unless cancelled.",
+            "nullable": true
+          },
+          "bags": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReclaimBagResponse"
+            },
+            "description": "Every bag on the flight, in tag order.",
+            "nullable": true
+          }
+        },
+        "additionalProperties": false,
+        "description": "API shape for one flight\u0027s reclaim, with every bag."
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Belts"
+    },
+    {
+      "name": "Reclaim"
+    }
+  ]
+}

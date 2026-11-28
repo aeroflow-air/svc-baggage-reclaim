@@ -8,8 +8,7 @@ metadata:
   title: Baggage reclaim
   description: >-
     Assigns reclaim belts to arrivals at LHR, simulates unloading and
-    publishes baggage-events. HTTP API for belts, reclaims and bags (OpenAPI
-    via Scalar in Development only). Not deployed.
+    publishes baggage-events. HTTP API for belts, reclaims and bags (OpenAPI spec checked in under openapi/). Not deployed.
   annotations:
     github.com/project-slug: aeroflow-air/svc-baggage-reclaim
     backstage.io/techdocs-ref: dir:.
@@ -22,6 +21,7 @@ spec:
   owner: group:squad-checkin
   system: airport
   providesApis:
+    - svc-baggage-reclaim-api
     - baggage-events
   consumesApis:
     - flight-events
@@ -50,3 +50,22 @@ spec:
   system: airport
   definition:
     $text: ./contracts/README.md
+---
+apiVersion: backstage.io/v1alpha1
+kind: API
+metadata:
+  name: svc-baggage-reclaim-api
+  title: Baggage reclaim HTTP API
+  description: >-
+    Belts, reclaims and single bags; completing a reclaim needs the Ops.Reclaim.Write role (ADR-0018). Generated OpenAPI 3 document (openapi/svc-baggage-reclaim.json).
+    Exported from the running code and kept in step by a test; the service
+    only serves the live document in Development (ADR-0015).
+  annotations:
+    github.com/project-slug: aeroflow-air/svc-baggage-reclaim
+spec:
+  type: openapi
+  lifecycle: experimental
+  owner: group:squad-checkin
+  system: airport
+  definition:
+    $text: ./openapi/svc-baggage-reclaim.json
